@@ -410,10 +410,8 @@ function renderThread() {
 }
 
 function renderThreadComposer() {
-  var gid = state.activeGroupId;
   var canCompose, blockedReason = '';
-  if (gid === 'geral' && !state.moderatorMode) { canCompose = false; blockedReason = 'Somente o TRE ou moderadores publicam no grupo Geral.'; }
-  else if (state.offlineMode) { canCompose = false; blockedReason = 'Sem conexão — a mensagem será enviada ao reconectar.'; }
+  if (state.offlineMode) { canCompose = false; blockedReason = 'Sem conexão — a mensagem será enviada ao reconectar.'; }
   else { canCompose = true; }
   var html = '<div class="composer">';
   if (canCompose) {
