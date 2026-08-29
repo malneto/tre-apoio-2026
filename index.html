@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TRE-PE Apoio 2026</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --navy: #16294B; --navy2: #1F3A63; --gold: #C79A3D;
+    --paper: #F7F5F0; --ink: #1B1B18; --muted: #8A8271; --muted2: #7A7466;
+    --border: #E4DFD3; --card: #FFFFFF; --divider: #EFEAE0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ECE8DE; }
+  body { font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif; color: var(--ink); }
+  a { color: var(--navy); }
+  button { font-family: inherit; cursor: pointer; }
+  input, select { font-family: inherit; }
+  .shell { max-width: 460px; margin: 0 auto; min-height: 100dvh; background: var(--paper); display: flex; flex-direction: column; }
+  @media (min-width: 461px) {
+    body { padding: 24px 0; }
+    .shell { min-height: min(844px, 92dvh); border-radius: 20px; overflow: hidden; box-shadow: 0 12px 40px rgba(22,41,75,.16); border: 1px solid #DFD9C8; }
+  }
+  .scroll { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+  .hidden { display: none !important; }
+
+  .header { flex: 0 0 auto; background: var(--navy); border-bottom: 2px solid var(--gold); }
+  .header-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; min-height: 44px; }
+  .header-btn { width: 32px; height: 32px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 8px; color: var(--paper); }
+  .mark { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 8px; background: var(--navy2); border: 1px solid var(--gold); display: flex; align-items: center; justify-content: center; }
+  .header-title { font-size: 15px; font-weight: 700; color: var(--paper); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-sub { font-size: 11.5px; font-weight: 500; color: #B9C3D6; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .offline-banner { padding: 7px 16px; background: #3A2E12; display: flex; align-items: center; gap: 8px; }
+  .offline-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A83B; flex: 0 0 auto; }
+  .offline-text { font-size: 11px; color: #F0D9A6; line-height: 1.3; }
+
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .pin-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .pin-tag { display: flex; align-items: center; gap: 6px; }
+  .pin-label { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: #B07F1E; text-transform: uppercase; }
+  .post-time { font-size: 11px; color: #9B9484; }
+  .post-author { font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 5px; }
+  .post-text { font-size: 13.5px; line-height: 1.5; color: #2B2A25; white-space: pre-line; }
+  .link-btn { margin-top: 8px; background: none; border: none; padding: 0; font-size: 12.5px; font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 4px; }
+  .steps { margin-top: 10px; border-top: 1px solid var(--divider); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .step { display: flex; gap: 8px; align-items: baseline; }
+  .step-date { font-size: 11.5px; font-weight: 700; color: var(--gold); flex: 0 0 auto; width: 66px; }
+  .step-text { font-size: 12.5px; color: #4A473E; line-height: 1.4; }
+
+  .group-card { width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+  .group-icon { width: 40px; height: 40px; border-radius: 9px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+  .group-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .group-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group-meta { text-align: right; flex: 0 0 auto; }
+  .group-count { font-size: 11.5px; font-weight: 600; color: #4A473E; }
+  .unread-dot { margin-top: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-left: auto; }
+  .hint { margin-top: 6px; font-size: 11.5px; color: #9B9484; line-height: 1.5; padding: 0 2px; }
+
+  .members-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .member-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .member-name { font-size: 12.5px; font-weight: 600; color: #2B2A25; }
+  .member-role { font-size: 11px; color: #9B9484; }
+  .remove-btn { background: #F7F0E8; border: none; border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #A24B3E; flex: 0 0 auto; }
+  .remove-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .search-box { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
+  .search-box input { border: none; outline: none; background: transparent; font-size: 13px; flex: 1 1 auto; color: #2B2A25; width: 100%; }
+  .faq-cat-icon { width: 38px; height: 38px; border-radius: 9px; background: #F1ECE0; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: var(--navy); }
+  .faq-cat-name { font-size: 13.5px; font-weight: 700; color: var(--navy); }
+  .faq-cat-count { font-size: 11.5px; color: #9B9484; }
+  .faq-q-btn { width: 100%; text-align: left; background: none; border: none; padding: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .faq-q { font-size: 13.5px; font-weight: 600; color: var(--navy); line-height: 1.4; }
+  .faq-a { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--divider); font-size: 13px; line-height: 1.55; color: #4A473E; }
+  .faq-cat-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--gold); text-transform: uppercase; margin-bottom: 5px; }
+
+  .profile-hero { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; text-align: center; }
+  .profile-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--navy); color: var(--paper); font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+  .profile-name { font-size: 16px; font-weight: 700; color: var(--navy); }
+  .profile-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .profile-badge { display: inline-block; margin-top: 10px; padding: 4px 10px; background: #F1ECE0; border-radius: 20px; font-size: 11.5px; font-weight: 600; color: var(--navy); }
+  .info-list { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px 14px; margin-bottom: 14px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--divider); }
+  .info-row:last-child { border-bottom: none; }
+  .info-label { font-size: 12.5px; color: var(--muted); }
+  .info-value { font-size: 12.5px; font-weight: 600; color: #2B2A25; }
+  .toggle-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+  .toggle-title { font-size: 13px; font-weight: 600; color: #2B2A25; }
+  .toggle-desc { font-size: 11.5px; color: #9B9484; margin-top: 2px; }
+  .switch { width: 42px; height: 24px; border-radius: 12px; border: none; position: relative; flex: 0 0 auto; }
+  .switch-knob { width: 18px; height: 18px; border-radius: 50%; background: #fff; position: absolute; top: 3px; transition: left .15s; }
+  .cta-btn { width: 100%; margin-top: 12px; background: var(--navy); color: var(--paper); border: none; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+  .filter-row { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; }
+  .filter-chip { flex: 0 0 auto; padding: 7px 13px; border-radius: 20px; border: 1px solid var(--border); background: #fff; color: #4A473E; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .filter-chip.active { border-color: var(--navy); background: var(--navy); color: var(--paper); }
+  .painel-member { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .add-form { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 6px; margin-bottom: 12px; }
+  .add-form-title { font-size: 12.5px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+  .add-form input, .add-form select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; margin-bottom: 8px; outline: none; background: #fff; }
+  .add-form-actions { display: flex; gap: 8px; }
+  .btn-primary { flex: 1 1 auto; background: var(--navy); color: #fff; border: none; border-radius: 7px; padding: 10px; font-size: 13px; font-weight: 600; }
+  .btn-secondary { flex: 0 0 auto; background: #F1ECE0; color: #4A473E; border: none; border-radius: 7px; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+  .add-dashed { width: 100%; border: 1.5px dashed #C6BFAE; background: transparent; border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 600; color: var(--navy); display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 20px; }
+  .add-dashed:disabled { opacity: .4; }
+  .zone-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--divider); }
+  .zone-name { font-size: 12.5px; color: #2B2A25; }
+  .zone-count { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  .offline-note { background: #FBF3E4; border: 1px solid #E9CE93; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; color: #7A5A17; }
+
+  .composer { flex: 0 0 auto; border-top: 1px solid var(--border); background: #fff; padding: 10px 14px; }
+  .composer-row { display: flex; gap: 8px; align-items: center; }
+  .composer-row input { flex: 1 1 auto; padding: 10px 13px; border: 1px solid var(--border); border-radius: 20px; font-size: 13px; outline: none; }
+  .send-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--navy); border: none; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .composer-blocked { font-size: 11.5px; color: #9B9484; text-align: center; padding: 6px 0; }
+
+  .bottomnav { flex: 0 0 auto; border-top: 1px solid var(--border); background: #fff; display: flex; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; }
+  .nav-btn { flex: 1 1 0; background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; color: var(--muted2); }
+  .nav-btn.active { color: var(--navy); }
+  .nav-label { font-size: 10.5px; font-weight: 500; }
+  .nav-btn.active .nav-label { font-weight: 700; }
+
+  .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="shell" id="app"></div>
+
+<script>
+"use strict";
+
+var GROUPS_META = {
+  geral: { name: 'Geral', sub: 'TRE-PE Apoio 2026 · 4ª Zona', icon: 'home', bg: '#1F3A63' },
+  administradores: { name: 'Administradores de Prédio', sub: 'Apoio logístico · Prédios', icon: 'building', bg: '#3E5A85' },
+  operadores: { name: 'Operadores (Mídia de Resultado)', sub: 'Transmissão de resultados', icon: 'broadcast', bg: '#6E5A2E' },
+  'secao-037': { name: 'Seção 037', sub: 'SENAC · Mesárias e mesários', icon: 'ballot', bg: '#4E6E4E' },
+  'escola-senac': { name: 'Escola SENAC', sub: 'Administradores do local', icon: 'school', bg: '#7A4E3E' }
+};
+var MY_GROUP_IDS = ['geral', 'administradores', 'secao-037', 'escola-senac'];
+
+var ZONE_GROUPS = [
+  { name: 'UNIBRA (3 instituições)', count: 61 },
+  { name: 'ETE - Ginásio Pernambucano', count: 47 },
+  { name: 'SENAC', count: 43 },
+  { name: 'Cartório', count: 57 },
+  { name: 'Campo Grande - EREM Nóbrega', count: 54 },
+  { name: 'Campo Grande - EREM Clóvis Bevilaqua', count: 42 },
+  { name: 'Campina do Barreto', count: 42 }
+];
+
+var FAQ_DATA = {
+  urna: { name: 'Urna Eletrônica', items: [
+    { q: 'A urna travou, o que eu faço?', a: 'O presidente de mesa deve fazer a única contingência permitida: ligar e desligar a urna eletrônica. Se não resolver, o administrador de prédio deve contatar imediatamente o Cartório Eleitoral.' },
+    { q: 'Até que horas o presidente deve emitir a Zerésima?', a: 'Até, no máximo, 7h30. O resumo da zerésima deve ficar afixado na entrada da seção.' },
+    { q: 'Preciso afixar algo na entrada da seção?', a: 'Sim: o resumo da zerésima e, ao final, a via do Boletim de Urna.' }
+  ]},
+  justificativa: { name: 'Justificativa Eleitoral', items: [
+    { q: 'O eleitor não vai votar, o que ele precisa?', a: 'Preencher o Requerimento de Justificativa Eleitoral (RJE) com o e-título instalado e atualizado, uma certidão de quitação eleitoral ou, pelo menos, o número do título — a urna só reconhece números.' },
+    { q: 'Quem coordena a fila de quem vai justificar?', a: 'O secretário da mesa receptora, que deve saber previamente sobre a necessidade do RJE e o número de inscrição eleitoral.' }
+  ]},
+  financeiro: { name: 'Financeiro (PIX)', items: [
+    { q: 'Quem recebe o PIX do auxílio-alimentação?', a: 'O responsável financeiro — pelo menos 2 por local com várias seções — chave PIX obrigatoriamente CPF, via Banco do Brasil. Cada mesário assina o formulário imediatamente ao receber.' },
+    { q: 'Um mesário faltou, o que fazer com o valor dele?', a: 'O valor deve ser recolhido para o PIX da chefia da 4ª Zona Eleitoral. No formulário, o campo de assinatura do faltante fica em branco.' },
+    { q: 'Houve substituição de mesário no dia, e agora?', a: 'A situação deve constar em ata. Um formulário específico permite escrever o nome do substituto, que assina normalmente.' }
+  ]},
+  midia: { name: 'Mídia de Resultado', items: [
+    { q: 'Quantos Pontos de Transmissão Secundários (PTS) existem este ano?', a: 'A 4ª ZE solicitou 6 PTS este ano — na última eleição foram 3.' },
+    { q: 'O que o responsável pela mídia de resultado faz?', a: 'Segue para o PTS indicado no seu roteiro e entrega a mídia ao responsável, que fará a leitura no Sistema Transportador.' }
+  ]},
+  fiscalizacao: { name: 'Fiscalização', items: [
+    { q: 'Quantos fiscais por partido são permitidos por seção?', a: 'Até 2 por partido, coligação ou federação, atuando um de cada vez. Candidatas e candidatos têm atuação garantida por direito próprio (fiscal nato).' },
+    { q: 'O que um fiscal pode fazer?', a: 'Fiscalizar todas as fases da votação e impugnar ou protestar, verbalmente ou por escrito, sobre a identidade do eleitor ou o andamento da votação.' }
+  ]},
+  vestuario: { name: 'Vestuário e Crachá', items: [
+    { q: 'Posso usar colete ou uniforme padronizado?', a: 'É vedada a padronização de vestuário. Se o crachá ou vestuário estiver em desacordo, o presidente deve orientar os ajustes necessários.' },
+    { q: 'Existe um administrador responsável pela acessibilidade?', a: 'Sim. Um dos administradores do prédio deve ser o coordenador de acessibilidade, com colete de identificação próprio, priorizando o atendimento a pessoas com deficiência.' }
+  ]}
+};
+var FAQ_CAT_ORDER = ['urna', 'justificativa', 'financeiro', 'midia', 'fiscalizacao', 'vestuario'];
+var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
+
+var ICONS = {
+  home: '<path d="M3 9.5L10 3l7 6.5"/><path d="M5 8.5V17h10V8.5"/>',
+  building: '<rect x="5" y="3" width="10" height="14" rx="1"/><path d="M8 6.5h1M11 6.5h1M8 9.5h1M11 9.5h1M8 12.5h1M11 12.5h1"/>',
+  broadcast: '<path d="M6.5 8.5a5 5 0 010 3M13.5 8.5a5 5 0 010 3M4 6.5a8.5 8.5 0 000 7M16 6.5a8.5 8.5 0 010 7"/><circle cx="10" cy="10" r="1.6"/>',
+  ballot: '<rect x="4" y="4" width="12" height="13" rx="1.5"/><path d="M7.5 10.5l1.8 1.8L13 8.5"/>',
+  school: '<path d="M10 3L2 7l8 4 8-4-8-4z"/><path d="M5 9v4.5c0 1 2.2 2 5 2s5-1 5-2V9"/>',
+  back: '<path d="M12.5 4L6.5 10L12.5 16"/>',
+  gear: '<path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path d="M16.2 12.3c.1-.3.1-.6 0-.9l1-.9-1-1.7-1.3.4c-.3-.3-.6-.5-.9-.6l-.3-1.3H9.3L9 8.9c-.3.1-.6.3-.9.6l-1.3-.4-1 1.7 1 .9c-.1.3-.1.6 0 .9l-1 .9 1 1.7 1.3-.4c.3.3.6.5.9.6l.3 1.3h1.4l.3-1.3c.3-.1.6-.3.9-.6l1.3.4 1-1.7-1-.9z"/>',
+  chev: '<path d="M5 7.5L10 12.5L15 7.5"/>',
+  chevRight: '<path d="M7.5 5L12.5 10L7.5 15"/>',
+  x: '<path d="M5 5l10 10M15 5L5 15"/>',
+  plus: '<path d="M10 4v12M4 10h12"/>',
+  search: '<circle cx="9" cy="9" r="6"/><path d="M13.5 13.5L17 17"/>',
+  send: '<path d="M17 3L3 9.5l6 2.5 2 6L17 3z"/>',
+  shield: '<path d="M10 2l6.5 2.8v4.6c0 4.4-2.8 7.2-6.5 8.6-3.7-1.4-6.5-4.2-6.5-8.6V4.8L10 2z"/>',
+  urna: '<rect x="4" y="6" width="12" height="9" rx="1.5"/><path d="M7 6V4.5A1.5 1.5 0 018.5 3h3A1.5 1.5 0 0113 4.5V6"/>',
+  doc: '<rect x="5" y="3" width="10" height="14" rx="1"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/>',
+  cifrao: '<circle cx="10" cy="10" r="6.5"/><path d="M10 7v6M8 12.2c.3.5 1 .8 2 .8 1.3 0 2-.6 2-1.5 0-2-4-.7-4-2.7 0-.9.7-1.5 2-1.5 1 0 1.7.3 2 .8"/>',
+  vest: '<path d="M7.5 4L10 6l2.5-2 3 2-1.5 2.5-1.5-.8V16h-5V7.7l-1.5.8L4.5 6l3-2z"/>',
+  pin: '<path d="M11 2l4 4-3 3 .5 5-2.5-2.5L7 14l1.5-3L6 8l5-4 0 -2z"/>'
+};
+function icon(name, size, stroke, fill) {
+  size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
+  var strokeAttrs = fill === 'none' ? ' stroke="' + stroke + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"' : '';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 20 20" fill="' + fill + '"' + strokeAttrs + '>' + ICONS[name] + '</svg>';
+}
+function initials(name) {
+  var parts = name.trim().split(/\s+/);
+  var a = parts[0] ? parts[0][0] : '';
+  var b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (a + b).toUpperCase();
+}
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+var state = {
+  screen: 'mural',
+  activeGroupId: null,
+  moderatorMode: false,
+  offlineMode: false,
+  expandedMuralId: 'cronograma',
+  faqSearch: '',
+  activeFaqCat: null,
+  expandedFaqId: null,
+  painelFilter: 'todos',
+  showAddForm: false,
+  newName: '', newRole: '', newGroup: 'administradores',
+  composeText: '',
+  members: [
+    { id: 1, name: 'Marcos Andrade', role: 'Adm. de Prédio (Financeiro)', group: 'administradores' },
+    { id: 2, name: 'Beatriz Nogueira', role: 'Adm. de Prédio (Acessibilidade)', group: 'escola-senac' },
+    { id: 3, name: 'João Paulo Ferreira', role: 'Operador de Mídia de Resultado', group: 'operadores' },
+    { id: 4, name: 'Cláudia Ramos', role: 'Presidente de Mesa', group: 'secao-037' },
+    { id: 5, name: 'Eduardo Sales', role: '1º Mesário', group: 'secao-037' },
+    { id: 6, name: 'Fernanda Lopes', role: '2ª Mesária', group: 'secao-037' },
+    { id: 7, name: 'Mário Alves Lima Neto', role: 'Adm. de Prédio', group: 'escola-senac' }
+  ],
+  groupMessages: {
+    geral: [
+      { author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, text: 'O Cronograma de Atividades do Administrador de Prédio já está no Mural. Confiram os prazos de entrega de material e devolução das urnas.' },
+      { author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: false, text: 'Lembrete: é vedada a padronização de vestuário. Ajustem crachás e coletes conforme orientação do presidente de mesa.' },
+      { author: 'Rita Areias · Chefe de Cartório', time: '26/08', pinned: false, text: 'Treinamento presencial confirmado para 26/09 na sede da 4ª Zona.' }
+    ],
+    administradores: [
+      { author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, text: 'Responsável financeiro: chave PIX obrigatoriamente CPF, via Banco do Brasil. Mínimo de 2 responsáveis por local com mais de uma seção.' },
+      { author: 'Marcos Andrade', time: '26/08', pinned: false, text: 'Alguém já recebeu o roteiro do PTS deste ano? Ouvi dizer que são 6 pontos.' },
+      { author: 'Você · Mário Lima', time: '27/08', pinned: false, text: 'Ainda não recebi. Vou confirmar no cartório amanhã.' }
+    ],
+    operadores: [
+      { author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, text: 'Este ano são 6 Pontos de Transmissão Secundários (PTS) — antes eram 3. Sigam o roteiro individual e entreguem a mídia ao responsável da leitura no Sistema Transportador.' }
+    ],
+    'secao-037': [
+      { author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, text: 'Zerésima deve ser emitida até, no máximo, 7h30. Resumo da zerésima e via do boletim de urna devem ficar afixados na entrada da seção.' },
+      { author: 'Você · Mário Lima', time: '27/08', pinned: false, text: 'Confirmando: abertura dos portões às 6h30 para os eleitores se dirigirem às suas seções.' }
+    ],
+    'escola-senac': [
+      { author: 'Você · Mário Lima', time: '26/08', pinned: false, text: 'Já organizei o acesso das 7 seções no local. Falta confirmar a sinalização de acessibilidade.' }
+    ]
+  }
+};
+
+var muralPosts = [
+  {
+    id: 'cronograma', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: true,
+    text: 'Cronograma de Atividades — Administrador de Prédio. Toque para ver as datas.',
+    steps: [
+      { date: '01/10', text: 'Entrega de material (Cartório Eleitoral)' },
+      { date: '02/10', text: 'Recebimento das urnas pela contratada + entrega de material' },
+      { date: '03/10', text: 'Organização do local de votação, incluindo as seções' },
+      { date: '04/10', text: 'Repasse do PIX, entrega da mídia de resultado e dos envelopes da Junta' },
+      { date: '05/10', text: 'Devolução das urnas, sacolas dos mesários e cadernos de votação' }
+    ]
+  },
+  { id: 'links', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: false,
+    text: 'Links úteis:\nOnde votar / e-Título — www.tre-pe.jus.br (aba Consultas)\nUrna Assiste — chamado de ocorrência em urna em tempo real (em desenvolvimento, o Cartório avisa aqui quando estiver disponível)\nDisque Eleitor — (81) 3194-9400' },
+  { id: 'portoes', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: false,
+    text: 'Lembre-se de fechar os portões às 17h e jamais feche antes — algum eleitor pode alegar que teve seu direito cerceado. Todos que entrarem até as 17h têm direito de votar.' },
+  { id: 'contatos', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: false, expandable: false,
+    text: 'Contatos úteis:\nFixos: (81) 3194-9704 / 9604 / 9004\nCelulares: (81) 99900-9544 / (81) 99798-0324' }
+];
+
+// ---------- actions ----------
+function go(screen, groupId) { state.screen = screen; state.activeGroupId = groupId || null; render(); }
+function toggleMural(id) { state.expandedMuralId = state.expandedMuralId === id ? null : id; render(); }
+function toggleModerator() { state.moderatorMode = !state.moderatorMode; render(); }
+function toggleOffline() { state.offlineMode = !state.offlineMode; render(); }
+function removeMember(id) { if (state.offlineMode) return; state.members = state.members.filter(function (m) { return m.id !== id; }); render(); }
+function addMember() {
+  if (state.offlineMode || !state.newName.trim()) return;
+  var nextId = Math.max.apply(null, state.members.map(function (m) { return m.id; }).concat([0])) + 1;
+  state.members.push({ id: nextId, name: state.newName.trim(), role: state.newRole.trim() || 'Integrante', group: state.newGroup });
+  state.showAddForm = false; state.newName = ''; state.newRole = '';
+  render();
+}
+function sendMessage() {
+  var id = state.activeGroupId;
+  if (!id || !state.composeText.trim()) return;
+  state.groupMessages[id].push({ author: 'Você · Mário Lima', time: 'agora', pinned: false, text: state.composeText.trim() });
+  state.composeText = '';
+  render();
+}
+function toggleFaqItem(key) { state.expandedFaqId = state.expandedFaqId === key ? null : key; render(); }
+
+// ---------- render helpers ----------
+function renderHeader() {
+  var showBack = false, showMark = true, showGear = false, title = 'TRE-PE Apoio 2026', sub = '4ª Zona Eleitoral';
+  if (state.screen === 'grupos') { title = 'Meus grupos'; sub = '4ª Zona Eleitoral'; }
+  if (state.screen === 'faq') { title = 'Perguntas Frequentes'; sub = 'Sem IA — respostas oficiais do Cartório'; }
+  if (state.screen === 'perfil') { title = 'Perfil'; sub = 'Sua convocação'; }
+  if (state.screen === 'painel') { title = 'Painel de Moderação'; sub = 'Gerenciar integrantes e grupos'; showBack = true; showMark = false; }
+  if (state.screen === 'thread') {
+    var meta = GROUPS_META[state.activeGroupId];
+    title = meta.name; sub = meta.sub; showBack = true; showMark = false;
+    if (state.moderatorMode) showGear = true;
+  }
+  var backAction = state.screen === 'painel' ? 'back-to-perfil' : 'back-to-grupos';
+  var offlineHtml = '';
+  if (state.offlineMode) {
+    var txt = state.screen === 'painel'
+      ? 'Sem conexão — consulta liberada, ações de gestão bloqueadas.'
+      : 'Sem conexão — exibindo mural, FAQ e mensagens salvos neste aparelho.';
+    offlineHtml = '<div class="offline-banner"><span class="offline-dot"></span><span class="offline-text">' + esc(txt) + '</span></div>';
+  }
+  return '<div class="header">' +
+    '<div class="header-row">' +
+    (showBack ? '<button class="header-btn" data-action="' + backAction + '">' + icon('back', 20) + '</button>' : '') +
+    (showMark ? '<div class="mark"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#C79A3D" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M10 5.5V10L13 12" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' : '') +
+    '<div style="flex:1 1 auto; min-width:0;">' +
+    '<div class="header-title">' + esc(title) + '</div>' +
+    '<div class="header-sub">' + esc(sub) + '</div>' +
+    '</div>' +
+    (showGear ? '<button class="header-btn" data-action="open-painel-from-thread">' + icon('gear', 19) + '</button>' : '') +
+    '</div>' + offlineHtml +
+    '</div>';
+}
+
+function renderMural() {
+  var html = '<div class="eyebrow">Mural de comunicação</div>';
+  muralPosts.forEach(function (post) {
+    var expanded = state.expandedMuralId === post.id;
+    html += '<div class="card">';
+    html += '<div class="pin-row"><div class="pin-tag">';
+    if (post.pinned) html += icon('pin', 13, 'none', '#C79A3D') + '<span class="pin-label">Fixado</span>';
+    html += '</div><span class="post-time">' + esc(post.time) + '</span></div>';
+    html += '<div class="post-author">' + esc(post.author) + '</div>';
+    html += '<div class="post-text">' + esc(post.text) + '</div>';
+    if (post.expandable) {
+      html += '<button class="link-btn" data-action="toggle-mural" data-id="' + post.id + '">' +
+        (expanded ? 'Ocultar cronograma' : 'Ver cronograma completo') +
+        '<span style="display:flex; transform:' + (expanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 13) + '</span></button>';
+      if (expanded) {
+        html += '<div class="steps">';
+        post.steps.forEach(function (s) {
+          html += '<div class="step"><span class="step-date">' + esc(s.date) + '</span><span class="step-text">' + esc(s.text) + '</span></div>';
+        });
+        html += '</div>';
+      }
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+function renderGrupos() {
+  var html = '<div class="eyebrow">Meus grupos</div>';
+  MY_GROUP_IDS.forEach(function (id) {
+    var meta = GROUPS_META[id];
+    var count = id === 'geral' ? '214 integrantes' : (state.members.filter(function (m) { return m.group === id; }).length + 1) + ' integrantes';
+    var unread = id === 'geral' || id === 'administradores';
+    html += '<button class="group-card" data-action="open-group" data-group="' + id + '">' +
+      '<div class="group-icon" style="background:' + meta.bg + ';">' + icon(meta.icon, 19, '#F7F5F0') + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(meta.name) + '</div><div class="group-sub">' + esc(meta.sub) + '</div></div>' +
+      '<div class="group-meta"><div class="group-count">' + count + '</div>' + (unread ? '<div class="unread-dot"></div>' : '') + '</div>' +
+      '</button>';
+  });
+  html += '<div class="hint">Você faz parte destes grupos conforme sua convocação no TRE-PE. Outros grupos (Operadores, demais escolas e seções) aparecem no Painel de Moderação.</div>';
+  return html;
+}
+
+function renderThread() {
+  var gid = state.activeGroupId;
+  var raw = state.members.filter(function (m) { return m.group === gid; });
+  var showMembers = ['escola-senac', 'secao-037', 'administradores', 'operadores'].indexOf(gid) !== -1;
+  var html = '';
+  if (showMembers) {
+    html += '<div class="members-box"><div class="eyebrow" style="margin-bottom:8px;">Integrantes (' + (raw.length + 1) + ')</div>';
+    raw.forEach(function (m, i) {
+      var canRemove = state.moderatorMode && !state.offlineMode;
+      html += '<div class="member-row"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
+        '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role) + '</div></div>' +
+        (canRemove ? '<button class="remove-btn" data-action="remove-member" data-id="' + m.id + '">' + icon('x', 13) + '</button>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  var msgs = (state.groupMessages[gid] || []).slice().reverse();
+  msgs.forEach(function (m) {
+    var authorColor = m.author.indexOf('Cartório') === 0 ? '#C79A3D' : '#16294B';
+    html += '<div class="message-card"><div class="pin-row">' +
+      '<div class="pin-tag">' + (m.pinned ? icon('pin', 12, 'none', '#C79A3D') : '') + '<span style="font-size:12px; font-weight:700; color:' + authorColor + ';">' + esc(m.author) + '</span></div>' +
+      '<span style="font-size:10.5px; color:#9B9484;">' + esc(m.time) + '</span></div>' +
+      '<div class="post-text">' + esc(m.text) + '</div></div>';
+  });
+  return html;
+}
+
+function renderThreadComposer() {
+  var gid = state.activeGroupId;
+  var canCompose, blockedReason = '';
+  if (gid === 'geral' && !state.moderatorMode) { canCompose = false; blockedReason = 'Somente o TRE ou moderadores publicam no grupo Geral.'; }
+  else if (state.offlineMode) { canCompose = false; blockedReason = 'Sem conexão — a mensagem será enviada ao reconectar.'; }
+  else { canCompose = true; }
+  var html = '<div class="composer">';
+  if (canCompose) {
+    html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '">' +
+      '<button class="send-btn" data-action="send-message">' + icon('send', 16, '#F7F5F0') + '</button></div>';
+  } else {
+    html += '<div class="composer-blocked">' + esc(blockedReason) + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderFaq() {
+  var html = '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '"></div>';
+  if (state.faqSearch.trim().length > 0) {
+    var q = state.faqSearch.trim().toLowerCase();
+    var results = [];
+    FAQ_CAT_ORDER.forEach(function (catId) {
+      FAQ_DATA[catId].items.forEach(function (item, idx) {
+        if ((item.q + ' ' + item.a).toLowerCase().indexOf(q) !== -1) results.push({ catName: FAQ_DATA[catId].name, key: catId + '-' + idx, q: item.q, a: item.a });
+      });
+    });
+    html += '<div class="eyebrow">' + results.length + ' resultado(s) para "' + esc(state.faqSearch.trim()) + '"</div>';
+    results.forEach(function (r) { html += renderFaqItem(r); });
+  } else if (state.activeFaqCat) {
+    var cat = FAQ_DATA[state.activeFaqCat];
+    html += '<button class="link-btn" data-action="faq-back" style="margin-bottom:12px;">' + icon('back', 14) + ' Categorias</button>';
+    html += '<div class="eyebrow">' + esc(cat.name) + '</div>';
+    cat.items.forEach(function (item, idx) { html += renderFaqItem({ key: state.activeFaqCat + '-' + idx, q: item.q, a: item.a }); });
+  } else {
+    html += '<div class="eyebrow">Categorias</div>';
+    FAQ_CAT_ORDER.forEach(function (catId) {
+      var cat = FAQ_DATA[catId];
+      var iconName = { urna: 'urna', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' }[catId];
+      html += '<button class="group-card" data-action="open-faq-cat" data-cat="' + catId + '">' +
+        '<div class="faq-cat-icon">' + icon(iconName, 18) + '</div>' +
+        '<div style="flex:1 1 auto;"><div class="faq-cat-name">' + esc(cat.name) + '</div><div class="faq-cat-count">' + cat.items.length + ' perguntas</div></div>' +
+        icon('chevRight', 15, '#C6BFAE') + '</button>';
+    });
+  }
+  return html;
+}
+function renderFaqItem(item) {
+  var expanded = state.expandedFaqId === item.key;
+  var html = '<div class="card">';
+  if (item.catName) html += '<div class="faq-cat-tag">' + esc(item.catName) + '</div>';
+  html += '<button class="faq-q-btn" data-action="toggle-faq" data-key="' + item.key + '">' +
+    '<span class="faq-q">' + esc(item.q) + '</span>' +
+    '<span style="flex:0 0 auto; margin-top:2px; display:flex; transform:' + (expanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 14, '#8A8271') + '</span></button>';
+  if (expanded) html += '<div class="faq-a">' + esc(item.a) + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderPerfil() {
+  var modBg = state.moderatorMode ? '#16294B' : '#D8D2C4', modLeft = state.moderatorMode ? '21px' : '3px';
+  var offBg = state.offlineMode ? '#B0742E' : '#D8D2C4', offLeft = state.offlineMode ? '21px' : '3px';
+  var html = '<div class="profile-hero"><div class="profile-avatar">ML</div>' +
+    '<div class="profile-name">Mário Alves Lima Neto</div>' +
+    '<div class="profile-sub">Inscrição eleitoral — oculta nesta versão pública</div>' +
+    '<div class="profile-badge">Apoio Logístico · Administrador de Prédio</div></div>';
+  html += '<div class="info-list">' +
+    '<div class="info-row"><span class="info-label">Zona eleitoral</span><span class="info-value">4ª Zona · Recife/PE</span></div>' +
+    '<div class="info-row"><span class="info-label">Local designado</span><span class="info-value">SENAC (7 seções)</span></div>' +
+    '<div class="info-row"><span class="info-label">Treinamento</span><span class="info-value">26/09/2026</span></div></div>';
+  html += '<div class="toggle-card"><div class="toggle-row"><div><div class="toggle-title">Modo moderador</div><div class="toggle-desc">Incluir/remover integrantes e gerenciar grupos</div></div>' +
+    '<button class="switch" style="background:' + modBg + ';" data-action="toggle-moderator"><div class="switch-knob" style="left:' + modLeft + ';"></div></button></div>';
+  if (state.moderatorMode) html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
+  html += '</div>';
+  html += '<div class="toggle-card" style="margin-bottom:0;"><div class="toggle-row"><div><div class="toggle-title">Simular modo offline</div><div class="toggle-desc">Testar o app sem conexão com o servidor</div></div>' +
+    '<button class="switch" style="background:' + offBg + ';" data-action="toggle-offline"><div class="switch-knob" style="left:' + offLeft + ';"></div></button></div></div>';
+  return html;
+}
+
+function renderPainel() {
+  var html = '';
+  if (state.offlineMode) html += '<div class="offline-note">Sem conexão: você pode consultar os integrantes salvos neste aparelho, mas incluir ou remover só funciona ao reconectar.</div>';
+  var filters = [
+    { id: 'todos', label: 'Todos' }, { id: 'administradores', label: 'Administradores' }, { id: 'operadores', label: 'Operadores' },
+    { id: 'secao-037', label: 'Seção 037' }, { id: 'escola-senac', label: 'Escola SENAC' }
+  ];
+  html += '<div class="filter-row">';
+  filters.forEach(function (f) {
+    html += '<button class="filter-chip' + (state.painelFilter === f.id ? ' active' : '') + '" data-action="painel-filter" data-filter="' + f.id + '">' + esc(f.label) + '</button>';
+  });
+  html += '</div>';
+  var filtered = state.members.filter(function (m) { return state.painelFilter === 'todos' || m.group === state.painelFilter; });
+  html += '<div class="eyebrow">Integrantes (' + filtered.length + ')</div>';
+  filtered.forEach(function (m, i) {
+    html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role) + ' · ' + esc(GROUPS_META[m.group].name) + '</div></div>' +
+      '<button class="remove-btn" data-action="remove-member" data-id="' + m.id + '"' + (state.offlineMode ? ' disabled' : '') + '>' + icon('x', 14) + '</button></div>';
+  });
+  if (state.showAddForm) {
+    html += '<div class="add-form"><div class="add-form-title">Novo integrante</div>' +
+      '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
+      '<input type="text" id="new-role-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.newRole) + '">' +
+      '<select id="new-group-select">';
+    [['administradores', 'Administradores de Prédio'], ['operadores', 'Operadores (Mídia de Resultado)'], ['secao-037', 'Seção 037'], ['escola-senac', 'Escola SENAC']].forEach(function (o) {
+      html += '<option value="' + o[0] + '"' + (state.newGroup === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+    });
+    html += '</select><div class="add-form-actions"><button class="btn-primary" data-action="add-member">Adicionar</button><button class="btn-secondary" data-action="cancel-add">Cancelar</button></div></div>';
+  } else {
+    html += '<button class="add-dashed" data-action="open-add"' + (state.offlineMode ? ' disabled' : '') + '>' + icon('plus', 15) + ' Adicionar integrante</button>';
+  }
+  html += '<div class="eyebrow">Grupos da 4ª Zona</div>';
+  ZONE_GROUPS.forEach(function (zg) { html += '<div class="zone-row"><span class="zone-name">' + esc(zg.name) + '</span><span class="zone-count">' + zg.count + ' seções</span></div>'; });
+  return html;
+}
+
+function renderBottomNav() {
+  if (state.screen === 'thread') return '';
+  function item(screen, action, iconName, label) {
+    var active = state.screen === screen || (screen === 'grupos' && state.screen === 'thread');
+    return '<button class="nav-btn' + (active ? ' active' : '') + '" data-action="' + action + '">' + icon(iconName, 21) + '<span class="nav-label">' + label + '</span></button>';
+  }
+  var html = '<div class="bottomnav">' +
+    item('mural', 'nav-mural', 'home', 'Mural') +
+    item('grupos', 'nav-grupos', 'ballot', 'Grupos') +
+    item('faq', 'nav-faq', 'search', 'FAQ') +
+    item('perfil', 'nav-perfil', 'school', 'Perfil');
+  if (state.moderatorMode) html += item('painel', 'nav-painel', 'shield', 'Painel');
+  html += '</div>';
+  return html;
+}
+
+// ---------- main render ----------
+function render() {
+  var focus = null;
+  var ae = document.activeElement;
+  if (ae && ae.id && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) {
+    focus = { id: ae.id, start: ae.selectionStart, end: ae.selectionEnd };
+  }
+  var body = '';
+  if (state.screen === 'mural') body = renderMural();
+  else if (state.screen === 'grupos') body = renderGrupos();
+  else if (state.screen === 'thread') body = renderThread();
+  else if (state.screen === 'faq') body = renderFaq();
+  else if (state.screen === 'perfil') body = renderPerfil();
+  else if (state.screen === 'painel') body = renderPainel();
+
+  var html = renderHeader() + '<div class="scroll">' + body + '</div>';
+  if (state.screen === 'thread') html += renderThreadComposer();
+  html += renderBottomNav();
+
+  var app = document.getElementById('app');
+  app.innerHTML = html;
+
+  if (focus) {
+    var el = document.getElementById(focus.id);
+    if (el) {
+      el.focus();
+      if (el.setSelectionRange && (el.type === 'text' || !el.type)) {
+        try { el.setSelectionRange(focus.start, focus.end); } catch (e) {}
+      }
+    }
+  }
+}
+
+// ---------- event delegation ----------
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-action]');
+  if (!el) return;
+  var action = el.getAttribute('data-action');
+  if (action === 'nav-mural') go('mural');
+  else if (action === 'nav-grupos') go('grupos');
+  else if (action === 'nav-faq') go('faq');
+  else if (action === 'nav-perfil') go('perfil');
+  else if (action === 'nav-painel') { state.painelFilter = 'todos'; go('painel'); }
+  else if (action === 'back-to-grupos') go('grupos');
+  else if (action === 'back-to-perfil') go('perfil');
+  else if (action === 'open-group') go('thread', el.getAttribute('data-group'));
+  else if (action === 'open-painel-from-thread') { state.painelFilter = state.activeGroupId; go('painel'); }
+  else if (action === 'toggle-mural') toggleMural(el.getAttribute('data-id'));
+  else if (action === 'toggle-moderator') toggleModerator();
+  else if (action === 'toggle-offline') toggleOffline();
+  else if (action === 'open-painel') { state.painelFilter = 'todos'; go('painel'); }
+  else if (action === 'remove-member') removeMember(parseInt(el.getAttribute('data-id'), 10));
+  else if (action === 'open-add') { if (!state.offlineMode) { state.showAddForm = true; render(); } }
+  else if (action === 'cancel-add') { state.showAddForm = false; state.newName = ''; state.newRole = ''; render(); }
+  else if (action === 'add-member') addMember();
+  else if (action === 'painel-filter') { state.painelFilter = el.getAttribute('data-filter'); render(); }
+  else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
+  else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
+  else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
+  else if (action === 'send-message') sendMessage();
+});
+
+document.addEventListener('input', function (e) {
+  if (e.target.id === 'faq-search-input') { state.faqSearch = e.target.value; state.activeFaqCat = null; render(); }
+  else if (e.target.id === 'compose-input') { state.composeText = e.target.value; }
+  else if (e.target.id === 'new-name-input') { state.newName = e.target.value; }
+  else if (e.target.id === 'new-role-input') { state.newRole = e.target.value; }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.id === 'compose-input') sendMessage();
+});
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'new-group-select') { state.newGroup = e.target.value; }
+});
+
+render();
+</script>
+</body>
+</html>
