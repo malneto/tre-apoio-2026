@@ -124,6 +124,14 @@
   .nav-btn.active .nav-label { font-weight: 700; }
 
   .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; }
+  .message-card.grouped { margin-top: -6px; padding-top: 7px; }
+  .grouped-row { min-height: 12px; margin-bottom: 4px; }
+
+  .mural-fanout { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 11px 12px; margin-bottom: 16px; }
+  .mural-fanout-title { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: #9B7A2E; margin-bottom: 7px; letter-spacing: .01em; }
+  .mural-fanout-item { width: 100%; text-align: left; background: #fff; border: 1px solid #EFE4C9; border-radius: 7px; padding: 8px 10px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mural-fanout-item:last-child { margin-bottom: 0; }
+  .mural-fanout-text { font-size: 12px; color: #4A473E; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -267,6 +275,7 @@ var state = {
 var muralPosts = [
   {
     id: 'cronograma', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: true,
+    title: 'Cronograma de Atividades — Administrador de Prédio',
     text: 'Cronograma de Atividades — Administrador de Prédio. Toque para ver as datas.',
     steps: [
       { date: '01/10', text: 'Entrega de material (Cartório Eleitoral)' },
@@ -277,8 +286,10 @@ var muralPosts = [
     ]
   },
   { id: 'links', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: false,
+    title: 'Links úteis: onde votar, Urna Assiste, Disque Eleitor',
     text: 'Links úteis:\nOnde votar / e-Título — www.tre-pe.jus.br (aba Consultas)\nUrna Assiste — chamado de ocorrência em urna em tempo real (em desenvolvimento, o Cartório avisa aqui quando estiver disponível)\nDisque Eleitor — (81) 3194-9400' },
   { id: 'portoes', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: false,
+    title: 'Fechamento dos portões às 17h',
     text: 'Lembre-se de fechar os portões às 17h e jamais feche antes — algum eleitor pode alegar que teve seu direito cerceado. Todos que entrarem até as 17h têm direito de votar.' },
   { id: 'contatos', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: false, expandable: false,
     text: 'Contatos úteis:\nFixos: (81) 3194-9704 / 9604 / 9004\nCelulares: (81) 99900-9544 / (81) 99798-0324' }
@@ -387,6 +398,14 @@ function renderThread() {
   var raw = state.members.filter(function (m) { return m.group === gid; });
   var showMembers = ['escola-senac', 'secao-037', 'administradores', 'operadores'].indexOf(gid) !== -1;
   var html = '';
+  var pinnedMural = muralPosts.filter(function (p) { return p.pinned; });
+  if (pinnedMural.length) {
+    html += '<div class="mural-fanout"><div class="mural-fanout-title">' + icon('pin', 12, 'none', '#C79A3D') + '<span>Avisos do Mural — publicados pelo TRE, visíveis em todos os grupos</span></div>';
+    pinnedMural.forEach(function (p) {
+      html += '<button class="mural-fanout-item" data-action="nav-mural"><span class="mural-fanout-text">' + esc(p.title || p.text.split('\n')[0]) + '</span>' + icon('chevRight', 14, '#B0A98F') + '</button>';
+    });
+    html += '</div>';
+  }
   if (showMembers) {
     html += '<div class="members-box"><div class="eyebrow" style="margin-bottom:8px;">Integrantes (' + (raw.length + 1) + ')</div>';
     raw.forEach(function (m, i) {
@@ -399,12 +418,22 @@ function renderThread() {
     html += '</div>';
   }
   var msgs = (state.groupMessages[gid] || []).slice().reverse();
+  var prevAuthor = null;
   msgs.forEach(function (m) {
+    var sameAsPrev = m.author === prevAuthor;
     var authorColor = m.author.indexOf('Cartório') === 0 ? '#C79A3D' : '#16294B';
-    html += '<div class="message-card"><div class="pin-row">' +
-      '<div class="pin-tag">' + (m.pinned ? icon('pin', 12, 'none', '#C79A3D') : '') + '<span style="font-size:12px; font-weight:700; color:' + authorColor + ';">' + esc(m.author) + '</span></div>' +
-      '<span style="font-size:10.5px; color:#9B9484;">' + esc(m.time) + '</span></div>' +
-      '<div class="post-text">' + esc(m.text) + '</div></div>';
+    html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + '">';
+    if (sameAsPrev) {
+      html += '<div class="pin-row grouped-row">' +
+        (m.pinned ? '<div class="pin-tag">' + icon('pin', 12, 'none', '#C79A3D') + '</div>' : '<div></div>') +
+        '<span style="font-size:10.5px; color:#9B9484;">' + esc(m.time) + '</span></div>';
+    } else {
+      html += '<div class="pin-row">' +
+        '<div class="pin-tag">' + (m.pinned ? icon('pin', 12, 'none', '#C79A3D') : '') + '<span style="font-size:12px; font-weight:700; color:' + authorColor + ';">' + esc(m.author) + '</span></div>' +
+        '<span style="font-size:10.5px; color:#9B9484;">' + esc(m.time) + '</span></div>';
+    }
+    html += '<div class="post-text">' + esc(m.text) + '</div></div>';
+    prevAuthor = m.author;
   });
   return html;
 }
