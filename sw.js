@@ -1,10 +1,13 @@
-const CACHE_NAME = 'tre-apoio-2026-v1';
+const CACHE_NAME = 'tre-apoio-2026-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icon-512-maskable.png',
+  './favicon-32.png',
+  './apple-touch-icon.png'
 ];
 
 self.addEventListener('install', function (event) {
