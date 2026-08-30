@@ -284,8 +284,8 @@ var state = {
 
 var muralPosts = [
   { id: 'aviso-institucional', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: false,
-    title: 'Aviso: canal informativo e complementar',
-    text: 'Este aplicativo é um canal informativo e complementar, mantido de forma experimental. Em caso de divergência entre o que está aqui publicado e as comunicações oficiais por e-mail, WhatsApp ou documento institucional, valem os meios institucionais. Apenas o Cartório Eleitoral pode publicar avisos e mensagens neste app.' },
+    title: 'Aviso: sistema experimental — confira sempre nos meios oficiais',
+    text: 'Este aplicativo é um canal complementar de comunicação, mantido de forma experimental. Como qualquer sistema novo, está sujeito a falhas e a tentativas de invasão. As informações aqui publicadas devem sempre ser conferidas nos meios oficiais (e-mail, WhatsApp e comunicados do Cartório Eleitoral); em caso de divergência, valem os meios institucionais. No Mural (Geral), só o Cartório Eleitoral publica; nos demais grupos, cada integrante pode postar normalmente.' },
   {
     id: 'cronograma', author: 'Cartório Eleitoral · 4ª Zona', time: '25/08', pinned: true, expandable: true,
     title: 'Cronograma de Atividades — Administrador de Prédio',
@@ -452,8 +452,9 @@ function renderThread() {
 }
 
 function renderThreadComposer() {
+  var gid = state.activeGroupId;
   var canCompose, blockedReason = '';
-  if (!state.moderatorMode) { canCompose = false; blockedReason = 'Canal só de leitura para convocados. Dúvidas e relatos seguem pelos meios já usados (WhatsApp, telefone, presencial).'; }
+  if (gid === 'geral' && !state.moderatorMode) { canCompose = false; blockedReason = 'O Geral é o canal oficial do Cartório — só o TRE publica aqui. Pra conversar com seu grupo, use Administradores, Operadores, sua Seção ou sua Escola.'; }
   else if (state.offlineMode) { canCompose = false; blockedReason = 'Sem conexão — a mensagem será enviada ao reconectar.'; }
   else { canCompose = true; }
   var html = '<div class="composer">';
@@ -520,7 +521,7 @@ function renderPerfil() {
     '<div class="info-row"><span class="info-label">Zona eleitoral</span><span class="info-value">4ª Zona · Recife/PE</span></div>' +
     '<div class="info-row"><span class="info-label">Local designado</span><span class="info-value">SENAC (7 seções)</span></div>' +
     '<div class="info-row"><span class="info-label">Treinamento</span><span class="info-value">26/09/2026</span></div></div>';
-  html += '<div class="toggle-card"><div class="toggle-row"><div><div class="toggle-title">Modo moderador (Cartório/TRE)</div><div class="toggle-desc">Publicar em qualquer grupo, incluir/remover integrantes e gerenciar grupos — restrito à Rita, à equipe do TRE e ao desenvolvedor</div></div>' +
+  html += '<div class="toggle-card"><div class="toggle-row"><div><div class="toggle-title">Modo moderador (Cartório/TRE)</div><div class="toggle-desc">Publicar no Geral, incluir/remover integrantes e gerenciar grupos — restrito à Rita, à equipe do TRE e ao desenvolvedor</div></div>' +
     '<button class="switch" style="background:' + modBg + ';" data-action="toggle-moderator"><div class="switch-knob" style="left:' + modLeft + ';"></div></button></div>';
   if (state.moderatorMode) html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
   html += '</div>';
