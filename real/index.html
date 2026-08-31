@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TRE-PE Apoio 2026</title>
+<meta name="theme-color" content="#16294B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TRE-PE Apoio">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --navy: #16294B; --navy2: #1F3A63; --gold: #C79A3D;
+    --paper: #F7F5F0; --ink: #1B1B18; --muted: #8A8271; --muted2: #7A7466;
+    --border: #E4DFD3; --card: #FFFFFF; --divider: #EFEAE0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ECE8DE; }
+  body { font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif; color: var(--ink); }
+  a { color: var(--navy); }
+  button { font-family: inherit; cursor: pointer; }
+  input, select { font-family: inherit; }
+  .shell { max-width: 460px; margin: 0 auto; min-height: 100dvh; background: var(--paper); display: flex; flex-direction: column; }
+  @media (min-width: 461px) {
+    body { padding: 24px 0; }
+    .shell { min-height: min(844px, 92dvh); border-radius: 20px; overflow: hidden; box-shadow: 0 12px 40px rgba(22,41,75,.16); border: 1px solid #DFD9C8; }
+  }
+  .scroll { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+  .hidden { display: none !important; }
+
+  .header { flex: 0 0 auto; background: var(--navy); border-bottom: 2px solid var(--gold); }
+  .header-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; min-height: 44px; }
+  .header-btn { width: 32px; height: 32px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 8px; color: var(--paper); }
+  .mark { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 8px; background: var(--navy2); border: 1px solid var(--gold); display: flex; align-items: center; justify-content: center; }
+  .header-title { font-size: 15px; font-weight: 700; color: var(--paper); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-sub { font-size: 11.5px; font-weight: 500; color: #B9C3D6; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .offline-banner { padding: 7px 16px; background: #3A2E12; display: flex; align-items: center; gap: 8px; }
+  .offline-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A83B; flex: 0 0 auto; }
+  .offline-text { font-size: 11px; color: #F0D9A6; line-height: 1.3; }
+
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .pin-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .pin-tag { display: flex; align-items: center; gap: 6px; }
+  .pin-label { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: #B07F1E; text-transform: uppercase; }
+  .post-time { font-size: 11px; color: #9B9484; }
+  .post-author { font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 5px; }
+  .post-text { font-size: 13.5px; line-height: 1.5; color: #2B2A25; white-space: pre-line; }
+  .link-btn { margin-top: 8px; background: none; border: none; padding: 0; font-size: 12.5px; font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 4px; }
+  .steps { margin-top: 10px; border-top: 1px solid var(--divider); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .step { display: flex; gap: 8px; align-items: baseline; }
+  .step-date { font-size: 11.5px; font-weight: 700; color: var(--gold); flex: 0 0 auto; width: 66px; }
+  .step-text { font-size: 12.5px; color: #4A473E; line-height: 1.4; }
+
+  .group-card { width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+  .group-icon { width: 40px; height: 40px; border-radius: 9px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+  .group-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .group-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group-meta { text-align: right; flex: 0 0 auto; }
+  .group-count { font-size: 11.5px; font-weight: 600; color: #4A473E; }
+  .unread-dot { margin-top: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-left: auto; }
+  .hint { margin-top: 6px; font-size: 11.5px; color: #9B9484; line-height: 1.5; padding: 0 2px; }
+
+  .members-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .member-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .member-name { font-size: 12.5px; font-weight: 600; color: #2B2A25; }
+  .member-role { font-size: 11px; color: #9B9484; }
+  .remove-btn { background: #F7F0E8; border: none; border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; color: #A24B3E; flex: 0 0 auto; }
+  .remove-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .search-box { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; margin-bottom: 14px; }
+  .search-box input { border: none; outline: none; background: transparent; font-size: 13px; flex: 1 1 auto; color: #2B2A25; width: 100%; }
+  .faq-cat-icon { width: 38px; height: 38px; border-radius: 9px; background: #F1ECE0; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: var(--navy); }
+  .faq-cat-name { font-size: 13.5px; font-weight: 700; color: var(--navy); }
+  .faq-cat-count { font-size: 11.5px; color: #9B9484; }
+  .faq-q-btn { width: 100%; text-align: left; background: none; border: none; padding: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .faq-q { font-size: 13.5px; font-weight: 600; color: var(--navy); line-height: 1.4; }
+  .faq-a { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--divider); font-size: 13px; line-height: 1.55; color: #4A473E; }
+  .faq-cat-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--gold); text-transform: uppercase; margin-bottom: 5px; }
+
+  .profile-hero { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; text-align: center; }
+  .profile-avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--navy); color: var(--paper); font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+  .profile-name { font-size: 16px; font-weight: 700; color: var(--navy); }
+  .profile-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .profile-badge { display: inline-block; margin-top: 10px; padding: 4px 10px; background: #F1ECE0; border-radius: 20px; font-size: 11.5px; font-weight: 600; color: var(--navy); }
+  .info-list { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px 14px; margin-bottom: 14px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--divider); }
+  .info-row:last-child { border-bottom: none; }
+  .info-label { font-size: 12.5px; color: var(--muted); }
+  .info-value { font-size: 12.5px; font-weight: 600; color: #2B2A25; }
+  .toggle-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+  .toggle-title { font-size: 13px; font-weight: 600; color: #2B2A25; }
+  .toggle-desc { font-size: 11.5px; color: #9B9484; margin-top: 2px; }
+  .switch { width: 42px; height: 24px; border-radius: 12px; border: none; position: relative; flex: 0 0 auto; }
+  .switch-knob { width: 18px; height: 18px; border-radius: 50%; background: #fff; position: absolute; top: 3px; transition: left .15s; }
+  .cta-btn { width: 100%; margin-top: 12px; background: var(--navy); color: var(--paper); border: none; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+  .filter-row { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; }
+  .filter-chip { flex: 0 0 auto; padding: 7px 13px; border-radius: 20px; border: 1px solid var(--border); background: #fff; color: #4A473E; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .filter-chip.active { border-color: var(--navy); background: var(--navy); color: var(--paper); }
+  .painel-member { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .add-form { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 6px; margin-bottom: 12px; }
+  .add-form-title { font-size: 12.5px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+  .add-form input, .add-form select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; margin-bottom: 8px; outline: none; background: #fff; }
+  .add-form-actions { display: flex; gap: 8px; }
+  .btn-primary { flex: 1 1 auto; background: var(--navy); color: #fff; border: none; border-radius: 7px; padding: 10px; font-size: 13px; font-weight: 600; }
+  .btn-secondary { flex: 0 0 auto; background: #F1ECE0; color: #4A473E; border: none; border-radius: 7px; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+  .add-dashed { width: 100%; border: 1.5px dashed #C6BFAE; background: transparent; border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 600; color: var(--navy); display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 20px; }
+  .add-dashed:disabled { opacity: .4; }
+  .zone-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--divider); }
+  .zone-name { font-size: 12.5px; color: #2B2A25; }
+  .zone-count { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  .offline-note { background: #FBF3E4; border: 1px solid #E9CE93; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; color: #7A5A17; }
+
+  .composer { flex: 0 0 auto; border-top: 1px solid var(--border); background: #fff; padding: 10px 14px; }
+  .composer-row { display: flex; gap: 8px; align-items: center; }
+  .composer-row input { flex: 1 1 auto; padding: 10px 13px; border: 1px solid var(--border); border-radius: 20px; font-size: 13px; outline: none; }
+  .send-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--navy); border: none; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .composer-blocked { font-size: 11.5px; color: #9B9484; text-align: center; padding: 6px 0; }
+
+  .bottomnav { flex: 0 0 auto; border-top: 1px solid var(--border); background: #fff; display: flex; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; }
+  .nav-btn { flex: 1 1 0; background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; color: var(--muted2); }
+  .nav-btn.active { color: var(--navy); }
+  .nav-label { font-size: 10.5px; font-weight: 500; }
+  .nav-btn.active .nav-label { font-weight: 700; }
+
+  .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; }
+  .message-card.grouped { margin-top: -6px; padding-top: 7px; }
+  .grouped-row { min-height: 12px; margin-bottom: 4px; }
+
+  .mural-fanout { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 11px 12px; margin-bottom: 16px; }
+  .mural-fanout-title { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: #9B7A2E; margin-bottom: 7px; letter-spacing: .01em; }
+  .mural-fanout-item { width: 100%; text-align: left; background: #fff; border: 1px solid #EFE4C9; border-radius: 7px; padding: 8px 10px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mural-fanout-item:last-child { margin-bottom: 0; }
+  .mural-fanout-text { font-size: 12px; color: #4A473E; line-height: 1.4; }
+
+  .center-screen { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; text-align: center; }
+  .login-mark { width: 56px; height: 56px; border-radius: 14px; background: var(--navy2); border: 1px solid var(--gold); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+  .login-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+  .login-sub { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-bottom: 22px; max-width: 300px; }
+  .login-form { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 10px; }
+  .login-form input { padding: 11px 13px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; outline: none; }
+  .login-btn { background: var(--navy); color: #fff; border: none; border-radius: 8px; padding: 11px; font-size: 13.5px; font-weight: 600; }
+  .login-btn:disabled { opacity: .5; }
+  .login-msg { font-size: 12px; margin-top: 10px; line-height: 1.5; }
+  .login-msg.error { color: #A24B3E; }
+  .login-msg.ok { color: #3E6E4E; }
+  .spinner { width: 26px; height: 26px; border: 3px solid var(--border); border-top-color: var(--navy); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .review-box { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+  .review-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9B7A2E; text-transform: uppercase; margin-bottom: 10px; }
+  .review-item { background: #fff; border: 1px solid #EFE4C9; border-radius: 8px; padding: 11px; margin-bottom: 8px; }
+  .review-actions { display: flex; gap: 8px; margin-top: 9px; }
+  .btn-approve { flex: 1 1 auto; background: #3E6E4E; color: #fff; border: none; border-radius: 7px; padding: 8px; font-size: 12.5px; font-weight: 600; }
+  .btn-reject { flex: 1 1 auto; background: #F7F0E8; color: #A24B3E; border: none; border-radius: 7px; padding: 8px; font-size: 12.5px; font-weight: 600; }
+  .del-msg-btn { background: none; border: none; color: #B0A98F; padding: 0; margin-left: 8px; }
+  .msg-removed { font-size: 12.5px; color: #9B9484; font-style: italic; }
+  .banner-error { background: #FBEAE6; border: 1px solid #E9B4A6; color: #8A3D2E; border-radius: 8px; padding: 9px 12px; font-size: 12px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="shell" id="app"></div>
+
+<script>
+"use strict";
+
+// ====== CONFIG — trocar aqui quando o projeto Supabase for pra nuvem ======
+var SUPABASE_URL = 'https://zetednplnwdhatpmcimo.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_LfT9I343HLNqwM4FlmNeaQ_8omqC0MH';
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+var FAQ_DATA = {
+  urna: { name: 'Urna Eletrônica', items: [
+    { q: 'A urna travou, o que eu faço?', a: 'O presidente de mesa deve fazer a única contingência permitida: ligar e desligar a urna eletrônica. Se não resolver, o administrador de prédio deve contatar imediatamente o Cartório Eleitoral.' },
+    { q: 'Até que horas o presidente deve emitir a Zerésima?', a: 'Até, no máximo, 7h30. O resumo da zerésima deve ficar afixado na entrada da seção.' },
+    { q: 'Preciso afixar algo na entrada da seção?', a: 'Sim: o resumo da zerésima e, ao final, a via do Boletim de Urna.' }
+  ]},
+  justificativa: { name: 'Justificativa Eleitoral', items: [
+    { q: 'O eleitor não vai votar, o que ele precisa?', a: 'Preencher o Requerimento de Justificativa Eleitoral (RJE) com o e-título instalado e atualizado, uma certidão de quitação eleitoral ou, pelo menos, o número do título — a urna só reconhece números.' },
+    { q: 'Quem coordena a fila de quem vai justificar?', a: 'O secretário da mesa receptora, que deve saber previamente sobre a necessidade do RJE e o número de inscrição eleitoral.' }
+  ]},
+  financeiro: { name: 'Financeiro (PIX)', items: [
+    { q: 'Quem recebe o PIX do auxílio-alimentação?', a: 'O responsável financeiro — pelo menos 2 por local com várias seções — chave PIX obrigatoriamente CPF, via Banco do Brasil. Cada mesário assina o formulário imediatamente ao receber.' },
+    { q: 'Um mesário faltou, o que fazer com o valor dele?', a: 'O valor deve ser recolhido para o PIX da chefia da 4ª Zona Eleitoral. No formulário, o campo de assinatura do faltante fica em branco.' },
+    { q: 'Houve substituição de mesário no dia, e agora?', a: 'A situação deve constar em ata. Um formulário específico permite escrever o nome do substituto, que assina normalmente.' }
+  ]},
+  midia: { name: 'Mídia de Resultado', items: [
+    { q: 'Quantos Pontos de Transmissão Secundários (PTS) existem este ano?', a: 'A 4ª ZE solicitou 6 PTS este ano — na última eleição foram 3.' },
+    { q: 'O que o responsável pela mídia de resultado faz?', a: 'Segue para o PTS indicado no seu roteiro e entrega a mídia ao responsável, que fará a leitura no Sistema Transportador.' }
+  ]},
+  fiscalizacao: { name: 'Fiscalização', items: [
+    { q: 'Quantos fiscais por partido são permitidos por seção?', a: 'Até 2 por partido, coligação ou federação, atuando um de cada vez. Candidatas e candidatos têm atuação garantida por direito próprio (fiscal nato).' },
+    { q: 'O que um fiscal pode fazer?', a: 'Fiscalizar todas as fases da votação e impugnar ou protestar, verbalmente ou por escrito, sobre a identidade do eleitor ou o andamento da votação.' }
+  ]},
+  vestuario: { name: 'Vestuário e Crachá', items: [
+    { q: 'Posso usar colete ou uniforme padronizado?', a: 'É vedada a padronização de vestuário. Se o crachá ou vestuário estiver em desacordo, o presidente deve orientar os ajustes necessários.' },
+    { q: 'Existe um administrador responsável pela acessibilidade?', a: 'Sim. Um dos administradores do prédio deve ser o coordenador de acessibilidade, com colete de identificação próprio, priorizando o atendimento a pessoas com deficiência.' }
+  ]}
+};
+var FAQ_CAT_ORDER = ['urna', 'justificativa', 'financeiro', 'midia', 'fiscalizacao', 'vestuario'];
+var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
+
+var ICON_STYLE = {
+  geral: { icon: 'home', bg: '#1F3A63' },
+  funcao: { icon: 'building', bg: '#3E5A85' },
+  secao: { icon: 'ballot', bg: '#4E6E4E' },
+  escola: { icon: 'school', bg: '#7A4E3E' }
+};
+var ICON_OVERRIDE = { operadores: { icon: 'broadcast', bg: '#6E5A2E' } };
+function iconStyleFor(grupo) { return ICON_OVERRIDE[grupo.slug] || ICON_STYLE[grupo.tipo] || ICON_STYLE.funcao; }
+
+var ICONS = {
+  home: '<path d="M3 9.5L10 3l7 6.5"/><path d="M5 8.5V17h10V8.5"/>',
+  building: '<rect x="5" y="3" width="10" height="14" rx="1"/><path d="M8 6.5h1M11 6.5h1M8 9.5h1M11 9.5h1M8 12.5h1M11 12.5h1"/>',
+  broadcast: '<path d="M6.5 8.5a5 5 0 010 3M13.5 8.5a5 5 0 010 3M4 6.5a8.5 8.5 0 000 7M16 6.5a8.5 8.5 0 010 7"/><circle cx="10" cy="10" r="1.6"/>',
+  ballot: '<rect x="4" y="4" width="12" height="13" rx="1.5"/><path d="M7.5 10.5l1.8 1.8L13 8.5"/>',
+  school: '<path d="M10 3L2 7l8 4 8-4-8-4z"/><path d="M5 9v4.5c0 1 2.2 2 5 2s5-1 5-2V9"/>',
+  back: '<path d="M12.5 4L6.5 10L12.5 16"/>',
+  gear: '<path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path d="M16.2 12.3c.1-.3.1-.6 0-.9l1-.9-1-1.7-1.3.4c-.3-.3-.6-.5-.9-.6l-.3-1.3H9.3L9 8.9c-.3.1-.6.3-.9.6l-1.3-.4-1 1.7 1 .9c-.1.3-.1.6 0 .9l-1 .9 1 1.7 1.3-.4c.3.3.6.5.9.6l.3 1.3h1.4l.3-1.3c.3-.1.6-.3.9-.6l1.3.4 1-1.7-1-.9z"/>',
+  chev: '<path d="M5 7.5L10 12.5L15 7.5"/>',
+  chevRight: '<path d="M7.5 5L12.5 10L7.5 15"/>',
+  x: '<path d="M5 5l10 10M15 5L5 15"/>',
+  plus: '<path d="M10 4v12M4 10h12"/>',
+  search: '<circle cx="9" cy="9" r="6"/><path d="M13.5 13.5L17 17"/>',
+  send: '<path d="M17 3L3 9.5l6 2.5 2 6L17 3z"/>',
+  shield: '<path d="M10 2l6.5 2.8v4.6c0 4.4-2.8 7.2-6.5 8.6-3.7-1.4-6.5-4.2-6.5-8.6V4.8L10 2z"/>',
+  urna: '<rect x="4" y="6" width="12" height="9" rx="1.5"/><path d="M7 6V4.5A1.5 1.5 0 018.5 3h3A1.5 1.5 0 0113 4.5V6"/>',
+  doc: '<rect x="5" y="3" width="10" height="14" rx="1"/><path d="M7.5 7h5M7.5 10h5M7.5 13h3"/>',
+  cifrao: '<circle cx="10" cy="10" r="6.5"/><path d="M10 7v6M8 12.2c.3.5 1 .8 2 .8 1.3 0 2-.6 2-1.5 0-2-4-.7-4-2.7 0-.9.7-1.5 2-1.5 1 0 1.7.3 2 .8"/>',
+  vest: '<path d="M7.5 4L10 6l2.5-2 3 2-1.5 2.5-1.5-.8V16h-5V7.7l-1.5.8L4.5 6l3-2z"/>',
+  pin: '<path d="M11 2l4 4-3 3 .5 5-2.5-2.5L7 14l1.5-3L6 8l5-4 0 -2z"/>',
+  logout: '<path d="M8 4H5.5A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8M13 13.5L17 10L13 6.5M17 10H7.5"/>'
+};
+function icon(name, size, stroke, fill) {
+  size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
+  var strokeAttrs = fill === 'none' ? ' stroke="' + stroke + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"' : '';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 20 20" fill="' + fill + '"' + strokeAttrs + '>' + ICONS[name] + '</svg>';
+}
+function markSvg() { return '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#C79A3D" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M10 5.5V10L13 12" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function initials(name) {
+  var parts = (name || '').trim().split(/\s+/);
+  var a = parts[0] ? parts[0][0] : ''; var b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (a + b).toUpperCase();
+}
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// ---------- máscaras dos campos de identidade (login) ----------
+// Só letras (com acento) e espaço — nunca número/símbolo, nome não tem isso.
+function maskNome(v) { return (v || '').replace(/[^A-Za-zÀ-ÖØ-öø-ÿ ]/g, ''); }
+// CPF: só dígito, formata 000.000.000-00
+function maskCPF(v) {
+  var d = (v || '').replace(/\D/g, '').slice(0, 11);
+  var out = d;
+  if (d.length > 9) out = d.slice(0, 3) + '.' + d.slice(3, 6) + '.' + d.slice(6, 9) + '-' + d.slice(9);
+  else if (d.length > 6) out = d.slice(0, 3) + '.' + d.slice(3, 6) + '.' + d.slice(6);
+  else if (d.length > 3) out = d.slice(0, 3) + '.' + d.slice(3);
+  return out;
+}
+// Título de eleitor: só dígito, formata em grupos de 4 (0000 0000 0000)
+function maskTitulo(v) {
+  var d = (v || '').replace(/\D/g, '').slice(0, 12);
+  return (d.match(/.{1,4}/g) || []).join(' ');
+}
+// Data de nascimento: só dígito, formata dd/mm/aaaa
+function maskData(v) {
+  var d = (v || '').replace(/\D/g, '').slice(0, 8);
+  var out = d;
+  if (d.length > 4) out = d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4);
+  else if (d.length > 2) out = d.slice(0, 2) + '/' + d.slice(2);
+  return out;
+}
+function aplicarMascara(el, valorMascarado) {
+  el.value = valorMascarado;
+  var pos = valorMascarado.length;
+  if (el.setSelectionRange) { try { el.setSelectionRange(pos, pos); } catch (e) {} }
+}
+function fmtHora(iso) {
+  try { var d = new Date(iso); return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+  catch (e) { return ''; }
+}
+
+var state = {
+  screen: 'loading',
+  session: null, perfil: null,
+  myGroups: [],
+  activeGroupId: null, activeGroupMeta: null,
+  threadMembers: [], threadMessages: [], composeText: '', composeError: '',
+  muralPosts: [], reviewQueue: [],
+  showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
+  muralFormComTopicos: false, muralFormTopicosTitulo: '',
+  expandedMuralId: null,
+  faqSearch: '', activeFaqCat: null, expandedFaqId: null,
+  painelFilter: 'todos', allGroups: [], painelMembers: [],
+  showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
+  loginStep: 'identidade', loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '',
+  loginCodigo: '', loginEmailMascarado: '', loginEmailReal: '', loginStatus: '', loginSending: false,
+  online: navigator.onLine,
+  banner: ''
+};
+
+var threadChannel = null, muralChannel = null;
+
+// ================= AUTH / BOOT =================
+async function boot() {
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('erro') === '1') state.banner = 'Não foi possível concluir o acesso. Peça um novo link.';
+
+  // Supabase devolve erro de link (expirado, já usado, inválido) no #hash da URL.
+  var hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  if (hashParams.get('error')) {
+    var codigoErro = hashParams.get('error_code') || '';
+    state.banner = codigoErro === 'otp_expired'
+      ? 'Esse link expirou ou já foi usado. Peça um novo — cada link vale por poucos minutos e só funciona uma vez.'
+      : 'Não foi possível concluir o acesso por esse link. Peça um novo.';
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+
+  var { data } = await sb.auth.getSession();
+  if (data.session) { await onSignedIn(data.session); } else { state.screen = 'login'; render(); }
+  sb.auth.onAuthStateChange(function (event, session) {
+    if (event === 'SIGNED_IN' && session && (!state.session || state.session.user.id !== session.user.id)) onSignedIn(session);
+    else if (event === 'SIGNED_OUT') { state.session = null; state.perfil = null; state.screen = 'login'; render(); }
+  });
+}
+
+async function onSignedIn(session) {
+  state.session = session;
+  var { data: perfil, error } = await sb.from('perfis').select('*').eq('id', session.user.id).single();
+  if (error || !perfil) {
+    state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
+    await sb.auth.signOut();
+    return;
+  }
+  state.perfil = perfil;
+  state.screen = 'mural';
+  await Promise.all([loadMural(), loadMyGroups()]);
+  render();
+}
+
+async function solicitarCodigo() {
+  var cpf = state.loginCpf.trim(), titulo = state.loginTitulo.trim(), nome = state.loginNome.trim(), nascimento = state.loginNascimento.trim();
+  if (!cpf || !titulo || !nome || !nascimento) { state.loginStatus = 'error:Preencha CPF, título, nome completo e data de nascimento.'; render(); return; }
+  state.loginSending = true; state.loginStatus = ''; render();
+  try {
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/solicitar-acesso', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, redirect_to: window.location.origin + window.location.pathname })
+    });
+    var json = await resp.json();
+    state.loginSending = false;
+    if (!resp.ok) { state.loginStatus = 'error:Não foi possível verificar seus dados agora. Tente de novo em instantes.'; render(); return; }
+    state.loginEmailReal = json.email || '';
+    state.loginEmailMascarado = json.email_mascarado || '';
+    state.loginStep = 'codigo';
+    state.loginStatus = '';
+    render();
+  } catch (e) {
+    state.loginSending = false; state.loginStatus = 'error:Sem conexão com o servidor. Tente novamente.'; render();
+  }
+}
+
+async function confirmarCodigo() {
+  var codigo = state.loginCodigo.trim();
+  if (!codigo) return;
+  if (!state.loginEmailReal) { state.loginStatus = 'error:Código inválido ou expirado. Volte e confira seus dados.'; render(); return; }
+  state.loginSending = true; state.loginStatus = ''; render();
+  var { error } = await sb.auth.verifyOtp({ email: state.loginEmailReal, token: codigo, type: 'email' });
+  state.loginSending = false;
+  if (error) { state.loginStatus = 'error:Código inválido ou expirado. Peça um novo.'; render(); return; }
+  // sucesso: onAuthStateChange (SIGNED_IN) cuida da navegação pro app
+}
+
+async function verificarSessao() {
+  state.loginSending = true; state.loginStatus = ''; render();
+  var { data } = await sb.auth.getSession();
+  state.loginSending = false;
+  if (data.session) return; // onAuthStateChange cuida do resto
+  state.loginStatus = 'error:Ainda não. Se já clicou no link, aguarde alguns segundos e tente de novo — ou volte e peça um novo link.';
+  render();
+}
+
+function voltarParaIdentidade() {
+  state.loginStep = 'identidade'; state.loginCodigo = ''; state.loginEmailReal = ''; state.loginEmailMascarado = ''; state.loginStatus = '';
+  render();
+}
+
+async function logout() { await sb.auth.signOut(); state.loginStep = 'identidade'; state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginCodigo = ''; }
+
+// ================= DADOS =================
+async function loadMyGroups() {
+  var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo)').eq('perfil_id', state.session.user.id);
+  if (error) { state.banner = error.message; return; }
+  state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean);
+}
+
+async function attachAutores(posts) {
+  var ids = Array.from(new Set(posts.map(function (p) { return p.autor_id; })));
+  if (!ids.length) return posts;
+  var { data } = await sb.from('perfis').select('id, nome_completo').in('id', ids);
+  var map = {}; (data || []).forEach(function (p) { map[p.id] = p.nome_completo; });
+  posts.forEach(function (p) { p._autorNome = map[p.autor_id] || 'Cartório Eleitoral'; });
+  return posts;
+}
+
+async function loadMural() {
+  var { data } = await sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('criado_em', { ascending: false });
+  state.muralPosts = data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
+  if (state.perfil.is_moderador || state.perfil.is_revisor) {
+    var { data: pend } = await sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true });
+    state.reviewQueue = await attachAutores(pend || []);
+  } else { state.reviewQueue = []; }
+  subscribeMural();
+}
+
+function subscribeMural() {
+  if (muralChannel) return;
+  muralChannel = sb.channel('mural-live').on('postgres_changes', { event: '*', schema: 'public', table: 'mural_posts' }, function () {
+    loadMural().then(render);
+  }).subscribe();
+}
+
+async function loadThread(grupo) {
+  state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
+  state.screen = 'thread'; state.threadMessages = []; state.threadMembers = []; state.composeError = '';
+  render();
+  var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
+  var membersPromise = state.perfil.is_moderador
+    ? sb.from('memberships').select('perfil_id, papel, perfis(nome_completo, funcao)').eq('grupo_id', grupo.id)
+    : Promise.resolve({ data: [] });
+  var [msgsRes, membersRes] = await Promise.all([msgsPromise, membersPromise]);
+  var msgs = msgsRes.data || [];
+  var autorIds = Array.from(new Set(msgs.map(function (m) { return m.autor_id; })));
+  var autorMap = {};
+  if (autorIds.length) {
+    var { data: autores } = await sb.from('perfis').select('id, nome_completo, is_moderador').in('id', autorIds);
+    (autores || []).forEach(function (a) { autorMap[a.id] = a; });
+  }
+  msgs.forEach(function (m) { m._autor = autorMap[m.autor_id] || { nome_completo: 'Integrante' }; });
+  state.threadMessages = msgs;
+  state.threadMembers = (membersRes.data || []).map(function (row) {
+    return { perfilId: row.perfil_id, name: row.perfis ? row.perfis.nome_completo : '—', role: row.perfis ? row.perfis.funcao : row.papel };
+  });
+  render();
+  subscribeThread(grupo.id);
+}
+
+function subscribeThread(grupoId) {
+  if (threadChannel) { sb.removeChannel(threadChannel); threadChannel = null; }
+  threadChannel = sb.channel('thread-' + grupoId).on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens', filter: 'grupo_id=eq.' + grupoId }, function () {
+    if (state.activeGroupId === grupoId) loadThread(state.activeGroupMeta);
+  }).subscribe();
+}
+
+function leaveThread() {
+  if (threadChannel) { sb.removeChannel(threadChannel); threadChannel = null; }
+  state.activeGroupId = null; state.activeGroupMeta = null;
+}
+
+async function sendMessage() {
+  var texto = state.composeText.trim();
+  if (!texto || !state.activeGroupId) return;
+  state.composeError = '';
+  var { error } = await sb.from('mensagens').insert({ grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto });
+  if (error) { state.composeError = error.message; render(); return; }
+  state.composeText = '';
+  await loadThread(state.activeGroupMeta);
+}
+
+async function removeMessage(id) {
+  if (!confirm('Remover esta mensagem? Fica registrado no histórico quem removeu, para prestação de contas.')) return;
+  await sb.from('mensagens').update({ removida_em: new Date().toISOString(), removida_por: state.session.user.id }).eq('id', id);
+  await loadThread(state.activeGroupMeta);
+}
+
+function adicionarPasso() {
+  state.muralFormPassos.push({ data: '', texto: '' });
+  render();
+}
+function removerPasso(idx) {
+  state.muralFormPassos.splice(idx, 1);
+  render();
+}
+
+async function criarAvisoMural() {
+  var titulo = state.muralFormTitulo.trim(), texto = state.muralFormTexto.trim();
+  if (!titulo) { state.banner = 'O título do aviso é obrigatório.'; render(); return; }
+  var passos = state.muralFormPassos
+    .map(function (p) { return { data: (p.data || '').trim(), texto: (p.texto || '').trim() }; })
+    .filter(function (p) { return p.texto; });
+  var topicosTitulo = state.muralFormTopicosTitulo.trim();
+  if (state.muralFormComTopicos) {
+    if (!topicosTitulo) { state.banner = 'Dê um título pra seção de tópicos (é o texto do botão "ver mais").'; render(); return; }
+    if (!passos.length) { state.banner = 'Adicione pelo menos 1 tópico, ou desmarque a seção de tópicos.'; render(); return; }
+  }
+  var novo = { autor_id: state.session.user.id, titulo: titulo, texto: texto || null, status: 'pendente' };
+  if (state.muralFormComTopicos && passos.length) { novo.passos = passos; novo.passos_titulo = topicosTitulo; }
+  var { error } = await sb.from('mural_posts').insert(novo);
+  if (error) { state.banner = error.message; render(); return; }
+  state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = [];
+  state.muralFormComTopicos = false; state.muralFormTopicosTitulo = '';
+  await loadMural(); render();
+}
+
+function toggleMuralExpand(id) {
+  state.expandedMuralId = state.expandedMuralId === id ? null : id;
+  render();
+}
+async function aprovarMural(id) {
+  await sb.from('mural_posts').update({ status: 'publicado', revisado_por: state.session.user.id, revisado_em: new Date().toISOString(), publicado_em: new Date().toISOString() }).eq('id', id);
+  await loadMural(); render();
+}
+async function rejeitarMural(id) {
+  var motivo = prompt('Motivo da rejeição (fica registrado, opcional):') || null;
+  await sb.from('mural_posts').update({ status: 'rejeitado', revisado_por: state.session.user.id, revisado_em: new Date().toISOString(), motivo_rejeicao: motivo }).eq('id', id);
+  await loadMural(); render();
+}
+
+async function loadPainel() {
+  var { data: grupos } = await sb.from('grupos').select('*').order('nome');
+  state.allGroups = grupos || [];
+  if (!state.newGroup && grupos && grupos.length) state.newGroup = grupos.find(function (g) { return g.slug !== 'geral'; }).slug;
+  await loadPainelMembers();
+}
+async function loadPainelMembers() {
+  var q = sb.from('memberships').select('perfil_id, grupo_id, papel, perfis(nome_completo, funcao), grupos(nome, slug)');
+  if (state.painelFilter !== 'todos') {
+    var g = state.allGroups.find(function (x) { return x.slug === state.painelFilter; });
+    if (g) q = q.eq('grupo_id', g.id);
+  }
+  var { data } = await q;
+  state.painelMembers = data || [];
+  render();
+}
+async function removerIntegrante(perfilId, grupoId) {
+  if (!confirm('Remover este integrante do grupo?')) return;
+  await sb.from('memberships').delete().eq('perfil_id', perfilId).eq('grupo_id', grupoId);
+  await loadPainelMembers();
+}
+async function adicionarIntegrante() {
+  var email = state.newEmail.trim(), nome = state.newName.trim(), funcao = state.newFuncao.trim(), grupoSlug = state.newGroup;
+  if (!email || !nome || !grupoSlug) return;
+  state.banner = '';
+  try {
+    var { data: sessionData } = await sb.auth.getSession();
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/convidar-convocado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
+      body: JSON.stringify({ email: email, nome_completo: nome, funcao: funcao, grupo_slug: grupoSlug })
+    });
+    var json = await resp.json();
+    if (!resp.ok) { state.banner = 'Não foi possível adicionar: ' + (json.error || resp.status); render(); return; }
+  } catch (e) { state.banner = 'Não foi possível contatar o servidor de convite.'; render(); return; }
+  state.showAddForm = false; state.newEmail = ''; state.newName = ''; state.newFuncao = '';
+  await loadPainelMembers();
+}
+
+function toggleFaqItem(key) { state.expandedFaqId = state.expandedFaqId === key ? null : key; render(); }
+
+// ================= RENDER =================
+function renderHeader() {
+  var showBack = false, showMark = true, showGear = false, showLogout = false, title = 'TRE-PE Apoio 2026', sub = '4ª Zona Eleitoral';
+  if (state.screen === 'grupos') { title = 'Meus grupos'; sub = '4ª Zona Eleitoral'; }
+  if (state.screen === 'faq') { title = 'Perguntas Frequentes'; sub = 'Sem IA — respostas oficiais do Cartório'; }
+  if (state.screen === 'perfil') { title = 'Perfil'; sub = 'Sua convocação'; showLogout = true; }
+  if (state.screen === 'painel') { title = 'Painel de Moderação'; sub = 'Gerenciar integrantes e grupos'; showBack = true; showMark = false; }
+  if (state.screen === 'thread' && state.activeGroupMeta) {
+    title = state.activeGroupMeta.nome; sub = state.activeGroupMeta.descricao || ''; showBack = true; showMark = false;
+  }
+  var offlineHtml = '';
+  if (!state.online) offlineHtml = '<div class="offline-banner"><span class="offline-dot"></span><span class="offline-text">Sem conexão — exibindo o que já foi carregado neste aparelho.</span></div>';
+  return '<div class="header"><div class="header-row">' +
+    (showBack ? '<button class="header-btn" data-action="back-to-grupos">' + icon('back', 20) + '</button>' : '') +
+    (showMark ? '<div class="mark">' + markSvg() + '</div>' : '') +
+    '<div style="flex:1 1 auto; min-width:0;"><div class="header-title">' + esc(title) + '</div><div class="header-sub">' + esc(sub) + '</div></div>' +
+    (showLogout ? '<button class="header-btn" data-action="logout">' + icon('logout', 19) + '</button>' : '') +
+    (showGear ? '<button class="header-btn" data-action="open-painel">' + icon('gear', 19) + '</button>' : '') +
+    '</div>' + offlineHtml + '</div>';
+}
+
+function renderLoading() { return renderHeader() + '<div class="center-screen"><div class="spinner"></div></div>'; }
+
+function renderLogin() {
+  var statusHtml = '';
+  if (state.loginStatus) { var parts = state.loginStatus.split(':'); statusHtml = '<div class="login-msg ' + parts[0] + '">' + esc(parts.slice(1).join(':')) + '</div>'; }
+  var bannerHtml = state.banner ? '<div class="banner-error" style="max-width:300px;">' + esc(state.banner) + '</div>' : '';
+
+  if (state.loginStep === 'codigo') {
+    return renderHeader() + '<div class="center-screen">' + bannerHtml +
+      '<div class="login-mark">' + markSvg() + '</div>' +
+      '<div class="login-title">Digite o código</div>' +
+      '<div class="login-sub">Se os dados baterem com um cadastro, mandamos um código de 6 dígitos pro e-mail já cadastrado na sua convocação. Ele vale só por 2 minutos.</div>' +
+      '<div class="login-form">' +
+      '<input type="text" inputmode="numeric" maxlength="6" id="login-codigo-input" placeholder="000000" style="text-align:center; font-size:20px; letter-spacing:6px;" value="' + esc(state.loginCodigo) + '">' +
+      '<button class="login-btn" data-action="confirmar-codigo" ' + (state.loginSending ? 'disabled' : '') + '>' + (state.loginSending ? 'Confirmando…' : 'Confirmar código') + '</button>' +
+      '<button class="link-btn" data-action="voltar-identidade" style="justify-content:center; margin-top:0;">Voltar</button>' +
+      '</div>' + statusHtml + '</div>';
+  }
+
+  return renderHeader() + '<div class="center-screen">' + bannerHtml +
+    '<div class="login-mark">' + markSvg() + '</div>' +
+    '<div class="login-title">Entrar</div>' +
+    '<div class="login-sub">Confirme os dados já cadastrados na sua convocação junto ao TRE-PE. Sem senha — vamos mandar um código de acesso pro e-mail cadastrado.</div>' +
+    '<div class="login-form">' +
+    '<input type="text" id="login-nome-input" placeholder="Nome completo" value="' + esc(state.loginNome) + '">' +
+    '<input type="text" inputmode="numeric" id="login-cpf-input" placeholder="CPF" value="' + esc(state.loginCpf) + '">' +
+    '<input type="text" inputmode="numeric" id="login-titulo-input" placeholder="Título de eleitor" value="' + esc(state.loginTitulo) + '">' +
+    '<input type="text" id="login-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.loginNascimento) + '">' +
+    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Enviar código de acesso') + '</button>' +
+    '</div>' + statusHtml + '</div>';
+}
+
+function renderPassosBloco(post) {
+  if (!post.passos || !post.passos.length) return '';
+  var expandido = state.expandedMuralId === post.id;
+  var rotulo = post.passos_titulo || 'lista completa';
+  var html = '<button class="link-btn" data-action="toggle-mural-expand" data-id="' + post.id + '">' +
+    (expandido ? 'Ocultar ' + esc(rotulo) : 'Ver ' + esc(rotulo)) +
+    '<span style="display:flex; transform:' + (expandido ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 13) + '</span></button>';
+  if (expandido) {
+    html += '<div class="steps">';
+    post.passos.forEach(function (s) { html += '<div class="step"><span class="step-date">' + esc(s.data || '') + '</span><span class="step-text">' + esc(s.texto) + '</span></div>'; });
+    html += '</div>';
+  }
+  return html;
+}
+
+function renderMural() {
+  var html = '<div class="eyebrow">Mural de comunicação</div>';
+  if (state.reviewQueue.length) {
+    html += '<div class="review-box"><div class="review-title">Fila de revisão (' + state.reviewQueue.length + ')</div>';
+    state.reviewQueue.forEach(function (p) {
+      var podeAprovar = state.perfil.is_revisor;
+      html += '<div class="review-item"><div class="post-author">' + esc(p._autorNome) + '</div><div style="font-size:13px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(p.titulo) + '</div>' + (p.texto ? '<div class="post-text">' + esc(p.texto) + '</div>' : '');
+      if (p.passos && p.passos.length) {
+        if (p.passos_titulo) html += '<div class="faq-cat-tag" style="margin-top:8px;">' + esc(p.passos_titulo) + '</div>';
+        html += '<div class="steps">';
+        p.passos.forEach(function (s) { html += '<div class="step"><span class="step-date">' + esc(s.data || '') + '</span><span class="step-text">' + esc(s.texto) + '</span></div>'; });
+        html += '</div>';
+      }
+      if (podeAprovar) {
+        html += '<div class="review-actions"><button class="btn-approve" data-action="aprovar-mural" data-id="' + p.id + '">Aprovar e publicar</button><button class="btn-reject" data-action="rejeitar-mural" data-id="' + p.id + '">Rejeitar</button></div>';
+      } else {
+        html += '<div class="hint" style="margin-top:8px;">Aguardando revisão do desenvolvedor antes de publicar.</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  if (state.perfil.is_moderador) {
+    if (state.showMuralForm) {
+      html += '<div class="add-form"><div class="add-form-title">Novo aviso no Mural</div>' +
+        '<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório)" value="' + esc(state.muralFormTitulo) + '">' +
+        '<textarea id="mural-texto-input" placeholder="Texto do aviso (opcional)" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.muralFormTexto) + '</textarea>';
+      html += '<div class="toggle-row" style="margin-bottom:' + (state.muralFormComTopicos ? '12px' : '4px') + ';"><div>' +
+        '<div class="toggle-title" style="font-size:12.5px;">Seção de tópicos</div>' +
+        '<div class="toggle-desc">Opcional — ex.: cronograma com data + descrição, aparece com "ver mais"</div></div>' +
+        '<button class="switch" style="background:' + (state.muralFormComTopicos ? '#16294B' : '#D8D2C4') + ';" data-action="toggle-topicos"><div class="switch-knob" style="left:' + (state.muralFormComTopicos ? '21px' : '3px') + ';"></div></button></div>';
+      if (state.muralFormComTopicos) {
+        html += '<input type="text" id="mural-topicos-titulo-input" placeholder="Título da seção (ex.: Cronograma completo)" value="' + esc(state.muralFormTopicosTitulo) + '" style="margin-bottom:8px;">';
+        state.muralFormPassos.forEach(function (p, idx) {
+          html += '<div style="display:flex; gap:6px; margin-bottom:8px;">' +
+            '<input type="text" data-passo-campo="data" data-passo-idx="' + idx + '" placeholder="Data/rótulo" style="width:100px; padding:9px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px;" value="' + esc(p.data) + '">' +
+            '<input type="text" data-passo-campo="texto" data-passo-idx="' + idx + '" placeholder="Descrição do tópico" style="flex:1 1 auto; padding:9px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px;" value="' + esc(p.texto) + '">' +
+            '<button data-action="remover-passo" data-idx="' + idx + '" style="background:#F7F0E8; border:none; border-radius:7px; width:36px; flex:0 0 auto; color:#A24B3E;">' + icon('x', 14) + '</button>' +
+            '</div>';
+        });
+        html += '<button class="link-btn" data-action="adicionar-passo" style="margin-bottom:12px;">' + icon('plus', 14) + ' Adicionar tópico (pelo menos 1)</button>';
+      }
+      html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-mural">Enviar para revisão</button><button class="btn-secondary" data-action="cancelar-mural">Cancelar</button></div></div>';
+    } else {
+      html += '<button class="add-dashed" data-action="abrir-form-mural">' + icon('plus', 15) + ' Novo aviso no Mural</button>';
+    }
+  }
+  state.muralPosts.forEach(function (post) {
+    html += '<div class="card"><div class="pin-row"><div class="pin-tag">';
+    if (post.fixado) html += icon('pin', 13, 'none', '#C79A3D') + '<span class="pin-label">Fixado</span>';
+    html += '</div><span class="post-time">' + esc(fmtHora(post.criado_em)) + '</span></div>' +
+      '<div class="post-author">Cartório Eleitoral · 4ª Zona</div>' +
+      '<div style="font-size:13.5px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(post.titulo) + '</div>' +
+      (post.texto ? '<div class="post-text">' + esc(post.texto) + '</div>' : '');
+    html += renderPassosBloco(post);
+    html += '</div>';
+  });
+  if (!state.muralPosts.length && !state.reviewQueue.length) html += '<div class="hint">Nenhum aviso publicado ainda.</div>';
+  return html;
+}
+
+function renderGrupos() {
+  var html = '<div class="eyebrow">Meus grupos</div>';
+  state.myGroups.forEach(function (g) {
+    var st = iconStyleFor(g);
+    html += '<button class="group-card" data-action="open-group" data-group="' + g.id + '">' +
+      '<div class="group-icon" style="background:' + st.bg + ';">' + icon(st.icon, 19, '#F7F5F0') + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(g.nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
+      icon('chevRight', 15, '#C6BFAE') + '</button>';
+  });
+  if (!state.myGroups.length) html += '<div class="hint">Você ainda não está em nenhum grupo. Fale com o Cartório Eleitoral.</div>';
+  else html += '<div class="hint">Você faz parte destes grupos conforme sua convocação no TRE-PE.</div>';
+  return html;
+}
+
+function renderThread() {
+  var html = '';
+  if (state.threadMembers.length) {
+    html += '<div class="members-box"><div class="eyebrow" style="margin-bottom:8px;">Integrantes (' + state.threadMembers.length + ')</div>';
+    state.threadMembers.forEach(function (m, i) {
+      var canRemove = state.perfil.is_moderador && m.perfilId !== state.session.user.id;
+      html += '<div class="member-row"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
+        '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role || '') + '</div></div>' +
+        (canRemove ? '<button class="remove-btn" data-action="remove-member" data-id="' + m.perfilId + '" data-grupo="' + state.activeGroupId + '">' + icon('x', 13) + '</button>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  var prevAuthor = null;
+  state.threadMessages.forEach(function (m) {
+    var authorName = m._autor.nome_completo + (m._autor.id === state.session.user.id ? ' (você)' : '');
+    var sameAsPrev = m.autor_id === prevAuthor;
+    var authorColor = m._autor.is_moderador ? '#C79A3D' : '#16294B';
+    html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + '">';
+    if (sameAsPrev) {
+      html += '<div class="pin-row grouped-row"><div>' + (m.fixado ? icon('pin', 12, 'none', '#C79A3D') : '') + '</div><span style="font-size:10.5px; color:#9B9484;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
+    } else {
+      html += '<div class="pin-row"><div class="pin-tag">' + (m.fixado ? icon('pin', 12, 'none', '#C79A3D') : '') + '<span style="font-size:12px; font-weight:700; color:' + authorColor + ';">' + esc(authorName) + '</span></div>' +
+        '<span style="font-size:10.5px; color:#9B9484;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
+    }
+    if (m.removida_em) {
+      html += '<div class="msg-removed">Mensagem removida pela moderação.</div>';
+    } else {
+      html += '<div class="post-text">' + esc(m.texto) + '</div>';
+      if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
+    }
+    html += '</div>';
+    prevAuthor = m.autor_id;
+  });
+  if (!state.threadMessages.length) html += '<div class="hint">Nenhuma mensagem ainda neste grupo.</div>';
+  return html;
+}
+
+function canPostHint() { return state.activeGroupMeta && (state.perfil.is_moderador || state.activeGroupMeta.slug !== 'geral'); }
+
+function renderThreadComposer() {
+  var html = '<div class="composer">';
+  if (!state.online) {
+    html += '<div class="composer-blocked">Sem conexão — a mensagem será enviada ao reconectar.</div>';
+  } else if (!canPostHint()) {
+    html += '<div class="composer-blocked">O Geral é o canal oficial do Cartório — só o TRE publica aqui.</div>';
+  } else {
+    html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '">' +
+      '<button class="send-btn" data-action="send-message">' + icon('send', 16, '#F7F5F0') + '</button></div>';
+    if (state.composeError) html += '<div class="banner-error" style="margin-top:8px; margin-bottom:0;">' + esc(state.composeError) + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderFaq() {
+  var html = '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '"></div>';
+  if (state.faqSearch.trim().length > 0) {
+    var q = state.faqSearch.trim().toLowerCase(); var results = [];
+    FAQ_CAT_ORDER.forEach(function (catId) {
+      FAQ_DATA[catId].items.forEach(function (item, idx) {
+        if ((item.q + ' ' + item.a).toLowerCase().indexOf(q) !== -1) results.push({ catName: FAQ_DATA[catId].name, key: catId + '-' + idx, q: item.q, a: item.a });
+      });
+    });
+    html += '<div class="eyebrow">' + results.length + ' resultado(s) para "' + esc(state.faqSearch.trim()) + '"</div>';
+    results.forEach(function (r) { html += renderFaqItem(r); });
+  } else if (state.activeFaqCat) {
+    var cat = FAQ_DATA[state.activeFaqCat];
+    html += '<button class="link-btn" data-action="faq-back" style="margin-bottom:12px;">' + icon('back', 14) + ' Categorias</button><div class="eyebrow">' + esc(cat.name) + '</div>';
+    cat.items.forEach(function (item, idx) { html += renderFaqItem({ key: state.activeFaqCat + '-' + idx, q: item.q, a: item.a }); });
+  } else {
+    html += '<div class="eyebrow">Categorias</div>';
+    FAQ_CAT_ORDER.forEach(function (catId) {
+      var cat = FAQ_DATA[catId];
+      var iconName = { urna: 'urna', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' }[catId];
+      html += '<button class="group-card" data-action="open-faq-cat" data-cat="' + catId + '"><div class="faq-cat-icon">' + icon(iconName, 18) + '</div>' +
+        '<div style="flex:1 1 auto;"><div class="faq-cat-name">' + esc(cat.name) + '</div><div class="faq-cat-count">' + cat.items.length + ' perguntas</div></div>' + icon('chevRight', 15, '#C6BFAE') + '</button>';
+    });
+  }
+  return html;
+}
+function renderFaqItem(item) {
+  var expanded = state.expandedFaqId === item.key;
+  var html = '<div class="card">';
+  if (item.catName) html += '<div class="faq-cat-tag">' + esc(item.catName) + '</div>';
+  html += '<button class="faq-q-btn" data-action="toggle-faq" data-key="' + item.key + '"><span class="faq-q">' + esc(item.q) + '</span>' +
+    '<span style="flex:0 0 auto; margin-top:2px; display:flex; transform:' + (expanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 14, '#8A8271') + '</span></button>';
+  if (expanded) html += '<div class="faq-a">' + esc(item.a) + '</div>';
+  html += '</div>'; return html;
+}
+
+function renderPerfil() {
+  var p = state.perfil;
+  var badges = [];
+  if (p.is_moderador) badges.push('Moderador (TRE)');
+  if (p.is_revisor) badges.push('Revisor do Mural');
+  var html = '<div class="profile-hero"><div class="profile-avatar">' + initials(p.nome_completo) + '</div>' +
+    '<div class="profile-name">' + esc(p.nome_completo) + '</div>' +
+    '<div class="profile-sub">' + esc(state.session.user.email) + '</div>' +
+    '<div class="profile-badge">' + esc(p.funcao || 'Convocado') + '</div>' +
+    (badges.length ? '<div class="profile-badge" style="margin-left:6px; background:#EAF1EC; color:#2E5A3E;">' + esc(badges.join(' · ')) + '</div>' : '') +
+    '</div>';
+  if (p.is_moderador) {
+    html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
+  }
+  html += '<div class="hint">Sessão autenticada por link enviado ao seu e-mail cadastrado no TRE-PE. Toque no ícone no topo para sair.</div>';
+  return html;
+}
+
+function renderPainel() {
+  var html = '';
+  var filters = [{ id: 'todos', label: 'Todos' }].concat(state.allGroups.map(function (g) { return { id: g.slug, label: g.nome }; }));
+  html += '<div class="filter-row">';
+  filters.forEach(function (f) { html += '<button class="filter-chip' + (state.painelFilter === f.id ? ' active' : '') + '" data-action="painel-filter" data-filter="' + f.id + '">' + esc(f.label) + '</button>'; });
+  html += '</div>';
+  html += '<div class="eyebrow">Integrantes (' + state.painelMembers.length + ')</div>';
+  state.painelMembers.forEach(function (m, i) {
+    html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.perfis ? m.perfis.nome_completo : '?') + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.perfis ? m.perfis.nome_completo : '—') + '</div><div class="member-role">' + esc(m.perfis ? m.perfis.funcao : '') + ' · ' + esc(m.grupos ? m.grupos.nome : '') + '</div></div>' +
+      '<button class="remove-btn" data-action="remove-integrante" data-id="' + m.perfil_id + '" data-grupo="' + m.grupo_id + '">' + icon('x', 14) + '</button></div>';
+  });
+  if (state.showAddForm) {
+    html += '<div class="add-form"><div class="add-form-title">Novo integrante</div>' +
+      '<input type="email" id="new-email-input" placeholder="E-mail já cadastrado no TRE" value="' + esc(state.newEmail) + '">' +
+      '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
+      '<input type="text" id="new-funcao-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.newFuncao) + '">' +
+      '<select id="new-group-select">';
+    state.allGroups.filter(function (g) { return g.slug !== 'geral'; }).forEach(function (g) {
+      html += '<option value="' + g.slug + '"' + (state.newGroup === g.slug ? ' selected' : '') + '>' + esc(g.nome) + '</option>';
+    });
+    html += '</select><div class="add-form-actions"><button class="btn-primary" data-action="confirmar-add">Adicionar</button><button class="btn-secondary" data-action="cancelar-add">Cancelar</button></div>' +
+      '<div class="hint" style="margin-top:8px;">Cria a conta do convocado e adiciona ao Geral + ao grupo escolhido.</div></div>';
+  } else {
+    html += '<button class="add-dashed" data-action="abrir-add">' + icon('plus', 15) + ' Adicionar integrante</button>';
+  }
+  return html;
+}
+
+function renderBottomNav() {
+  if (state.screen === 'thread') return '';
+  function item(screen, action, iconName, label) {
+    var active = state.screen === screen;
+    return '<button class="nav-btn' + (active ? ' active' : '') + '" data-action="' + action + '">' + icon(iconName, 21) + '<span class="nav-label">' + label + '</span></button>';
+  }
+  return '<div class="bottomnav">' + item('mural', 'nav-mural', 'home', 'Mural') + item('grupos', 'nav-grupos', 'ballot', 'Grupos') + item('faq', 'nav-faq', 'search', 'FAQ') + item('perfil', 'nav-perfil', 'school', 'Perfil') + '</div>';
+}
+
+function render() {
+  var focus = null;
+  var ae = document.activeElement;
+  if (ae && ae.id && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) focus = { id: ae.id, start: ae.selectionStart, end: ae.selectionEnd };
+  var app = document.getElementById('app');
+  var html;
+  if (state.screen === 'loading') html = renderLoading();
+  else if (state.screen === 'login') html = renderLogin();
+  else {
+    var body = '';
+    if (state.screen === 'mural') body = renderMural();
+    else if (state.screen === 'grupos') body = renderGrupos();
+    else if (state.screen === 'thread') body = renderThread();
+    else if (state.screen === 'faq') body = renderFaq();
+    else if (state.screen === 'perfil') body = renderPerfil();
+    else if (state.screen === 'painel') body = renderPainel();
+    html = renderHeader() + '<div class="scroll">' + (state.banner ? '<div class="banner-error">' + esc(state.banner) + '</div>' : '') + body + '</div>';
+    if (state.screen === 'thread') html += renderThreadComposer();
+    html += renderBottomNav();
+  }
+  app.innerHTML = html;
+  if (focus) {
+    var el = document.getElementById(focus.id);
+    if (el) { el.focus(); if (el.setSelectionRange && (el.type === 'text' || el.type === 'email' || !el.type)) { try { el.setSelectionRange(focus.start, focus.end); } catch (e) {} } }
+  }
+}
+
+function go(screen) {
+  if (screen !== 'thread') leaveThread();
+  state.screen = screen; state.banner = '';
+  if (screen === 'painel') loadPainel();
+  render();
+}
+
+// ================= EVENTOS =================
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-action]');
+  if (!el) return;
+  var action = el.getAttribute('data-action');
+  if (action === 'solicitar-codigo') solicitarCodigo();
+  else if (action === 'confirmar-codigo') confirmarCodigo();
+  else if (action === 'verificar-sessao') verificarSessao();
+  else if (action === 'voltar-identidade') voltarParaIdentidade();
+  else if (action === 'logout') logout();
+  else if (action === 'nav-mural') go('mural');
+  else if (action === 'nav-grupos') go('grupos');
+  else if (action === 'nav-faq') go('faq');
+  else if (action === 'nav-perfil') go('perfil');
+  else if (action === 'back-to-grupos') go('grupos');
+  else if (action === 'open-group') {
+    var g = state.myGroups.find(function (x) { return x.id === el.getAttribute('data-group'); });
+    if (g) loadThread(g);
+  }
+  else if (action === 'open-painel') go('painel');
+  else if (action === 'send-message') sendMessage();
+  else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
+  else if (action === 'remove-member' || action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
+  else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
+  else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
+  else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
+  else if (action === 'abrir-form-mural') { state.showMuralForm = true; render(); }
+  else if (action === 'cancelar-mural') { state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; render(); }
+  else if (action === 'toggle-topicos') { state.muralFormComTopicos = !state.muralFormComTopicos; if (state.muralFormComTopicos && !state.muralFormPassos.length) state.muralFormPassos.push({ data: '', texto: '' }); render(); }
+  else if (action === 'enviar-mural') criarAvisoMural();
+  else if (action === 'aprovar-mural') aprovarMural(el.getAttribute('data-id'));
+  else if (action === 'rejeitar-mural') rejeitarMural(el.getAttribute('data-id'));
+  else if (action === 'adicionar-passo') adicionarPasso();
+  else if (action === 'remover-passo') removerPasso(parseInt(el.getAttribute('data-idx'), 10));
+  else if (action === 'toggle-mural-expand') toggleMuralExpand(el.getAttribute('data-id'));
+  else if (action === 'painel-filter') { state.painelFilter = el.getAttribute('data-filter'); loadPainelMembers(); }
+  else if (action === 'abrir-add') { state.showAddForm = true; render(); }
+  else if (action === 'cancelar-add') { state.showAddForm = false; render(); }
+  else if (action === 'confirmar-add') adicionarIntegrante();
+});
+document.addEventListener('input', function (e) {
+  var id = e.target.id;
+  var passoIdx = e.target.getAttribute && e.target.getAttribute('data-passo-idx');
+  if (passoIdx !== null && passoIdx !== undefined) {
+    var campo = e.target.getAttribute('data-passo-campo');
+    if (state.muralFormPassos[passoIdx]) state.muralFormPassos[passoIdx][campo] = e.target.value;
+    return;
+  }
+  if (id === 'login-nome-input') { state.loginNome = maskNome(e.target.value); aplicarMascara(e.target, state.loginNome); }
+  else if (id === 'login-cpf-input') { state.loginCpf = maskCPF(e.target.value); aplicarMascara(e.target, state.loginCpf); }
+  else if (id === 'login-titulo-input') { state.loginTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.loginTitulo); }
+  else if (id === 'login-nascimento-input') { state.loginNascimento = maskData(e.target.value); aplicarMascara(e.target, state.loginNascimento); }
+  else if (id === 'login-codigo-input') state.loginCodigo = e.target.value;
+  else if (id === 'faq-search-input') { state.faqSearch = e.target.value; state.activeFaqCat = null; render(); }
+  else if (id === 'compose-input') state.composeText = e.target.value;
+  else if (id === 'mural-titulo-input') state.muralFormTitulo = e.target.value;
+  else if (id === 'mural-texto-input') state.muralFormTexto = e.target.value;
+  else if (id === 'mural-topicos-titulo-input') state.muralFormTopicosTitulo = e.target.value;
+  else if (id === 'new-email-input') state.newEmail = e.target.value;
+  else if (id === 'new-name-input') state.newName = e.target.value;
+  else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  if (e.target.id === 'compose-input') sendMessage();
+  else if (e.target.id === 'login-nascimento-input') solicitarCodigo();
+  else if (e.target.id === 'login-codigo-input') confirmarCodigo();
+});
+document.addEventListener('change', function (e) { if (e.target.id === 'new-group-select') state.newGroup = e.target.value; });
+window.addEventListener('online', function () { state.online = true; render(); });
+window.addEventListener('offline', function () { state.online = false; render(); });
+
+boot();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
+</script>
+</body>
+</html>
