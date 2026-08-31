@@ -182,7 +182,12 @@ var FAQ_DATA = {
   urna: { name: 'Urna Eletrônica', items: [
     { q: 'A urna travou, o que eu faço?', a: 'O presidente de mesa deve fazer a única contingência permitida: ligar e desligar a urna eletrônica. Se não resolver, o administrador de prédio deve contatar imediatamente o Cartório Eleitoral.' },
     { q: 'Até que horas o presidente deve emitir a Zerésima?', a: 'Até, no máximo, 7h30. O resumo da zerésima deve ficar afixado na entrada da seção.' },
-    { q: 'Preciso afixar algo na entrada da seção?', a: 'Sim: o resumo da zerésima e, ao final, a via do Boletim de Urna.' }
+    { q: 'Preciso afixar algo na entrada da seção?', a: 'Sim: o resumo da zerésima e, ao final, a via do Boletim de Urna.' },
+    { q: 'Como a urna deve ficar posicionada na seção?', a: 'Na cabine de votação, posicionada de forma a garantir o sigilo do voto — só a eleitora ou o eleitor pode ver o visor, com livre movimentação na seção. É vedado afixar lista com nome ou número de inscrição eleitoral nas dependências da seção ou do local de votação (Resolução TSE 23.751/2026, art. 19, e Código Eleitoral, art. 138).' }
+  ]},
+  encerramento: { name: 'Encerramento da Seção', items: [
+    { q: 'O que preciso entregar pra Junta Eleitoral ao final da votação?', a: 'Assim que os trabalhos da seção forem encerrados, o administrador de prédio deve se apresentar à Junta da 4ª Zona Eleitoral com o envelope contendo: a Zerésima, 2 Boletins de Urna (BU), o Boletim de Eleitores Habilitados pela Biometria (BEHB), o Boletim de Identificação de Mesários e a ata de cada seção. A Junta confere os documentos e libera o administrador.' },
+    { q: 'Preciso checar alguma coisa antes de fechar o local de votação?', a: 'Sim. Antes de encerrar, verifique se há eleitores em banheiros ou corredores que ainda não votaram — oriente-os a ir imediatamente para a fila da seção deles. Todos que entrarem até as 17h têm direito de votar.' }
   ]},
   justificativa: { name: 'Justificativa Eleitoral', items: [
     { q: 'O eleitor não vai votar, o que ele precisa?', a: 'Preencher o Requerimento de Justificativa Eleitoral (RJE) com o e-título instalado e atualizado, uma certidão de quitação eleitoral ou, pelo menos, o número do título — a urna só reconhece números.' },
@@ -206,7 +211,7 @@ var FAQ_DATA = {
     { q: 'Existe um administrador responsável pela acessibilidade?', a: 'Sim. Um dos administradores do prédio deve ser o coordenador de acessibilidade, com colete de identificação próprio, priorizando o atendimento a pessoas com deficiência.' }
   ]}
 };
-var FAQ_CAT_ORDER = ['urna', 'justificativa', 'financeiro', 'midia', 'fiscalizacao', 'vestuario'];
+var FAQ_CAT_ORDER = ['urna', 'encerramento', 'justificativa', 'financeiro', 'midia', 'fiscalizacao', 'vestuario'];
 var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
 
 var ICON_STYLE = {
@@ -297,6 +302,8 @@ var state = {
   muralPosts: [], reviewQueue: [],
   showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
   muralFormComTopicos: false, muralFormTopicosTitulo: '',
+  muralFormAudienciaTodos: true, muralFormAudiencia: [], muralFormExigeConfirmacao: false,
+  minhasConfirmacoes: [],
   expandedMuralId: null,
   faqSearch: '', activeFaqCat: null, expandedFaqId: null,
   painelFilter: 'todos', allGroups: [], painelMembers: [],
@@ -418,7 +425,16 @@ async function loadMural() {
     var { data: pend } = await sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true });
     state.reviewQueue = await attachAutores(pend || []);
   } else { state.reviewQueue = []; }
+  var idsQueExigem = state.muralPosts.filter(function (p) { return p.exige_confirmacao; }).map(function (p) { return p.id; });
+  if (idsQueExigem.length) {
+    var { data: conf } = await sb.from('mural_confirmacoes').select('mural_post_id').eq('perfil_id', state.session.user.id).in('mural_post_id', idsQueExigem);
+    state.minhasConfirmacoes = (conf || []).map(function (c) { return c.mural_post_id; });
+  } else { state.minhasConfirmacoes = []; }
   subscribeMural();
+}
+
+function contarPendentesConfirmacao() {
+  return state.muralPosts.filter(function (p) { return p.exige_confirmacao && state.minhasConfirmacoes.indexOf(p.id) === -1; }).length;
 }
 
 function subscribeMural() {
@@ -501,13 +517,35 @@ async function criarAvisoMural() {
     if (!topicosTitulo) { state.banner = 'Dê um título pra seção de tópicos (é o texto do botão "ver mais").'; render(); return; }
     if (!passos.length) { state.banner = 'Adicione pelo menos 1 tópico, ou desmarque a seção de tópicos.'; render(); return; }
   }
-  var novo = { autor_id: state.session.user.id, titulo: titulo, texto: texto || null, status: 'pendente' };
+  var audiencia = state.muralFormAudienciaTodos ? ['todos'] : state.muralFormAudiencia.slice();
+  if (!state.muralFormAudienciaTodos && !audiencia.length) { state.banner = 'Marque pelo menos um público, ou selecione "Todos".'; render(); return; }
+  var novo = { autor_id: state.session.user.id, titulo: titulo, texto: texto || null, status: 'pendente', visibilidade: audiencia, exige_confirmacao: state.muralFormExigeConfirmacao };
   if (state.muralFormComTopicos && passos.length) { novo.passos = passos; novo.passos_titulo = topicosTitulo; }
   var { error } = await sb.from('mural_posts').insert(novo);
   if (error) { state.banner = error.message; render(); return; }
   state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = [];
   state.muralFormComTopicos = false; state.muralFormTopicosTitulo = '';
+  state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false;
   await loadMural(); render();
+}
+
+function toggleAudiencia(categoria) {
+  var idx = state.muralFormAudiencia.indexOf(categoria);
+  if (idx === -1) state.muralFormAudiencia.push(categoria); else state.muralFormAudiencia.splice(idx, 1);
+  render();
+}
+
+async function confirmarLeitura(postId) {
+  var { error } = await sb.from('mural_confirmacoes').insert({ mural_post_id: postId, perfil_id: state.session.user.id });
+  if (error) { state.banner = error.message; render(); return; }
+  state.minhasConfirmacoes.push(postId);
+  render();
+}
+
+var ROTULO_AUDIENCIA = { todos: 'Todos', administradores: 'Administradores', operadores: 'Operadores', mesarios: 'Mesários' };
+function rotuloVisibilidade(visibilidade) {
+  if (!visibilidade || !visibilidade.length || visibilidade.indexOf('todos') !== -1) return 'Todos';
+  return visibilidade.map(function (v) { return ROTULO_AUDIENCIA[v] || v; }).join(' + ');
 }
 
 function toggleMuralExpand(id) {
@@ -639,7 +677,9 @@ function renderMural() {
     html += '<div class="review-box"><div class="review-title">Fila de revisão (' + state.reviewQueue.length + ')</div>';
     state.reviewQueue.forEach(function (p) {
       var podeAprovar = state.perfil.is_revisor;
-      html += '<div class="review-item"><div class="post-author">' + esc(p._autorNome) + '</div><div style="font-size:13px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(p.titulo) + '</div>' + (p.texto ? '<div class="post-text">' + esc(p.texto) + '</div>' : '');
+      html += '<div class="review-item"><div class="post-author">' + esc(p._autorNome) + '</div><div style="font-size:13px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(p.titulo) + '</div>' +
+        '<div class="profile-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(p.visibilidade)) + (p.exige_confirmacao ? ' · exige confirmação' : '') + '</div>' +
+        (p.texto ? '<div class="post-text">' + esc(p.texto) + '</div>' : '');
       if (p.passos && p.passos.length) {
         if (p.passos_titulo) html += '<div class="faq-cat-tag" style="margin-top:8px;">' + esc(p.passos_titulo) + '</div>';
         html += '<div class="steps">';
@@ -676,6 +716,23 @@ function renderMural() {
         });
         html += '<button class="link-btn" data-action="adicionar-passo" style="margin-bottom:12px;">' + icon('plus', 14) + ' Adicionar tópico (pelo menos 1)</button>';
       }
+      html += '<div class="hint" style="margin:4px 2px 6px;">Quem pode ver este aviso:</div>';
+      html += '<div class="filter-row" style="margin-bottom:' + (state.muralFormAudienciaTodos ? '12px' : '8px') + ';">' +
+        '<button class="filter-chip' + (state.muralFormAudienciaTodos ? ' active' : '') + '" data-action="audiencia-todos">Todos</button>' +
+        '<button class="filter-chip' + (!state.muralFormAudienciaTodos ? ' active' : '') + '" data-action="audiencia-mescla">Grupos específicos</button>' +
+        '</div>';
+      if (!state.muralFormAudienciaTodos) {
+        html += '<div class="filter-row" style="margin-bottom:12px;">';
+        ['administradores', 'operadores', 'mesarios'].forEach(function (cat) {
+          var marcado = state.muralFormAudiencia.indexOf(cat) !== -1;
+          html += '<button class="filter-chip' + (marcado ? ' active' : '') + '" data-action="toggle-audiencia" data-cat="' + cat + '">' + (marcado ? '✓ ' : '') + ROTULO_AUDIENCIA[cat] + '</button>';
+        });
+        html += '</div>';
+      }
+      html += '<div class="toggle-row" style="margin-bottom:12px;"><div>' +
+        '<div class="toggle-title" style="font-size:12.5px;">Exigir confirmação de leitura</div>' +
+        '<div class="toggle-desc">Quem for do público-alvo vê um botão "Confirmar leitura" e um aviso até confirmar</div></div>' +
+        '<button class="switch" style="background:' + (state.muralFormExigeConfirmacao ? '#16294B' : '#D8D2C4') + ';" data-action="toggle-exige-confirmacao"><div class="switch-knob" style="left:' + (state.muralFormExigeConfirmacao ? '21px' : '3px') + ';"></div></button></div>';
       html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-mural">Enviar para revisão</button><button class="btn-secondary" data-action="cancelar-mural">Cancelar</button></div></div>';
     } else {
       html += '<button class="add-dashed" data-action="abrir-form-mural">' + icon('plus', 15) + ' Novo aviso no Mural</button>';
@@ -687,8 +744,17 @@ function renderMural() {
     html += '</div><span class="post-time">' + esc(fmtHora(post.criado_em)) + '</span></div>' +
       '<div class="post-author">Cartório Eleitoral · 4ª Zona</div>' +
       '<div style="font-size:13.5px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(post.titulo) + '</div>' +
+      '<div class="profile-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(post.visibilidade)) + '</div>' +
       (post.texto ? '<div class="post-text">' + esc(post.texto) + '</div>' : '');
     html += renderPassosBloco(post);
+    if (post.exige_confirmacao) {
+      var confirmado = state.minhasConfirmacoes.indexOf(post.id) !== -1;
+      if (confirmado) {
+        html += '<div class="hint" style="margin-top:10px; color:#3E6E4E;">' + icon('chev', 12, '#3E6E4E') + ' Leitura confirmada</div>';
+      } else {
+        html += '<button class="btn-approve" style="margin-top:10px; width:100%;" data-action="confirmar-leitura" data-id="' + post.id + '">Confirmar leitura</button>';
+      }
+    }
     html += '</div>';
   });
   if (!state.muralPosts.length && !state.reviewQueue.length) html += '<div class="hint">Nenhum aviso publicado ainda.</div>';
@@ -783,7 +849,7 @@ function renderFaq() {
     html += '<div class="eyebrow">Categorias</div>';
     FAQ_CAT_ORDER.forEach(function (catId) {
       var cat = FAQ_DATA[catId];
-      var iconName = { urna: 'urna', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' }[catId];
+      var iconName = { urna: 'urna', encerramento: 'logout', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' }[catId];
       html += '<button class="group-card" data-action="open-faq-cat" data-cat="' + catId + '"><div class="faq-cat-icon">' + icon(iconName, 18) + '</div>' +
         '<div style="flex:1 1 auto;"><div class="faq-cat-name">' + esc(cat.name) + '</div><div class="faq-cat-count">' + cat.items.length + ' perguntas</div></div>' + icon('chevRight', 15, '#C6BFAE') + '</button>';
     });
@@ -849,11 +915,15 @@ function renderPainel() {
 
 function renderBottomNav() {
   if (state.screen === 'thread') return '';
-  function item(screen, action, iconName, label) {
+  function item(screen, action, iconName, label, badge) {
     var active = state.screen === screen;
-    return '<button class="nav-btn' + (active ? ' active' : '') + '" data-action="' + action + '">' + icon(iconName, 21) + '<span class="nav-label">' + label + '</span></button>';
+    return '<button class="nav-btn' + (active ? ' active' : '') + '" data-action="' + action + '">' +
+      '<span style="position:relative; display:inline-flex;">' + icon(iconName, 21) +
+      (badge ? '<span style="position:absolute; top:-2px; right:-2px; width:9px; height:9px; border-radius:50%; background:#C79A3D; border:2px solid #fff;"></span>' : '') +
+      '</span><span class="nav-label">' + label + '</span></button>';
   }
-  return '<div class="bottomnav">' + item('mural', 'nav-mural', 'home', 'Mural') + item('grupos', 'nav-grupos', 'ballot', 'Grupos') + item('faq', 'nav-faq', 'search', 'FAQ') + item('perfil', 'nav-perfil', 'school', 'Perfil') + '</div>';
+  var pendentes = contarPendentesConfirmacao();
+  return '<div class="bottomnav">' + item('mural', 'nav-mural', 'home', 'Mural', pendentes > 0) + item('grupos', 'nav-grupos', 'ballot', 'Grupos') + item('faq', 'nav-faq', 'search', 'FAQ') + item('perfil', 'nav-perfil', 'school', 'Perfil') + '</div>';
 }
 
 function render() {
@@ -917,8 +987,13 @@ document.addEventListener('click', function (e) {
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
   else if (action === 'abrir-form-mural') { state.showMuralForm = true; render(); }
-  else if (action === 'cancelar-mural') { state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; render(); }
+  else if (action === 'cancelar-mural') { state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false; render(); }
   else if (action === 'toggle-topicos') { state.muralFormComTopicos = !state.muralFormComTopicos; if (state.muralFormComTopicos && !state.muralFormPassos.length) state.muralFormPassos.push({ data: '', texto: '' }); render(); }
+  else if (action === 'audiencia-todos') { state.muralFormAudienciaTodos = true; render(); }
+  else if (action === 'audiencia-mescla') { state.muralFormAudienciaTodos = false; render(); }
+  else if (action === 'toggle-audiencia') toggleAudiencia(el.getAttribute('data-cat'));
+  else if (action === 'toggle-exige-confirmacao') { state.muralFormExigeConfirmacao = !state.muralFormExigeConfirmacao; render(); }
+  else if (action === 'confirmar-leitura') confirmarLeitura(el.getAttribute('data-id'));
   else if (action === 'enviar-mural') criarAvisoMural();
   else if (action === 'aprovar-mural') aprovarMural(el.getAttribute('data-id'));
   else if (action === 'rejeitar-mural') rejeitarMural(el.getAttribute('data-id'));
