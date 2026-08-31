@@ -658,7 +658,8 @@ function renderMural() {
   if (state.perfil.is_moderador) {
     if (state.showMuralForm) {
       html += '<div class="add-form"><div class="add-form-title">Novo aviso no Mural</div>' +
-        '<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório)" value="' + esc(state.muralFormTitulo) + '">' +
+        '<div class="hint" style="margin:0 2px 8px;">O cabeçalho "Cartório Eleitoral · 4ª Zona" já aparece sozinho em cima de todo aviso — não precisa digitar isso. O título é a manchete do aviso, ex.: "Fechamento dos portões às 17h".</div>' +
+        '<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório) — ex.: Fechamento dos portões às 17h" value="' + esc(state.muralFormTitulo) + '">' +
         '<textarea id="mural-texto-input" placeholder="Texto do aviso (opcional)" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.muralFormTexto) + '</textarea>';
       html += '<div class="toggle-row" style="margin-bottom:' + (state.muralFormComTopicos ? '12px' : '4px') + ';"><div>' +
         '<div class="toggle-title" style="font-size:12.5px;">Seção de tópicos</div>' +
