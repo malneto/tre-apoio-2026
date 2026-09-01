@@ -299,6 +299,7 @@ var state = {
   faqSearch: '', activeFaqCat: null, expandedFaqId: null, faqPerguntas: [], faqLoaded: false,
   showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [],
+  configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
@@ -705,7 +706,19 @@ async function loadPainel() {
   var { data: grupos } = await sb.from('grupos').select('*').order('nome');
   state.allGroups = grupos || [];
   if (!state.newGroup && grupos && grupos.length) state.newGroup = grupos.find(function (g) { return g.slug !== 'geral'; }).slug;
+  var { data: config } = await sb.from('configuracao').select('valor').eq('chave', 'geral_intervalo_segundos').maybeSingle();
+  state.configGeralIntervalo = config ? config.valor : '60';
   await loadPainelMembers();
+}
+
+async function salvarConfigGeralIntervalo() {
+  var valor = parseInt(state.configGeralIntervaloForm, 10);
+  if (!valor || valor < 0) { state.banner = 'Digite um número de segundos válido.'; render(); return; }
+  var { error } = await sb.from('configuracao').update({ valor: String(valor) }).eq('chave', 'geral_intervalo_segundos');
+  if (error) { state.banner = error.message; render(); return; }
+  state.configGeralIntervalo = String(valor);
+  state.configGeralSalvo = true;
+  render();
 }
 async function loadPainelMembers() {
   var q = sb.from('memberships').select('perfil_id, grupo_id, papel, perfis(nome_completo, funcao), grupos(nome, slug)');
@@ -1010,8 +1023,10 @@ function renderThread() {
 
 function canPostHint() {
   if (!state.activeGroupMeta) return false;
-  if (state.activeGroupMeta.slug === 'geral') return state.perfil.is_moderador;
-  if (state.perfil.is_moderador) return state.souMembroComPostagem;
+  // Geral já foi liberado pra todo mundo postar (com limite de tempo entre
+  // mensagens, configurável em Painel > Configurações) — só continua fechado
+  // o caso de moderador olhando um grupo comum onde não é integrante de verdade.
+  if (state.perfil.is_moderador && state.activeGroupMeta.slug !== 'geral') return state.souMembroComPostagem;
   return true;
 }
 
@@ -1038,9 +1053,7 @@ function renderThreadComposer() {
   if (!state.online) {
     html += '<div class="composer-blocked">Sem conexão — a mensagem será enviada ao reconectar.</div>';
   } else if (!canPostHint()) {
-    html += '<div class="composer-blocked">' + (state.activeGroupMeta.slug === 'geral'
-      ? 'O Geral é o canal oficial do Cartório — só o TRE publica aqui.'
-      : 'Você está vendo este grupo como moderador, mas não é integrante dele — só acompanha, não posta aqui.') + '</div>';
+    html += '<div class="composer-blocked">Você está vendo este grupo como moderador, mas não é integrante dele — só acompanha, não posta aqui.</div>';
   } else {
     html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '">' +
       '<button class="send-btn" data-action="send-message">' + icon('send', 16, '#F7F5F0') + '</button></div>';
@@ -1200,6 +1213,13 @@ function renderPerfil() {
 
 function renderPainel() {
   var html = '';
+  html += '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Configurações</div>' +
+    '<div class="hint" style="margin:0 2px 8px;">Intervalo mínimo entre mensagens de uma mesma pessoa no grupo Geral (segundos). Geral é aberto pra todo mundo postar, esse limite evita flood.</div>' +
+    '<div style="display:flex; gap:8px; align-items:center;">' +
+    '<input type="text" inputmode="numeric" id="config-geral-intervalo-input" style="max-width:100px;" placeholder="' + esc(state.configGeralIntervalo) + '" value="' + esc(state.configGeralIntervaloForm) + '">' +
+    '<button class="btn-primary" style="flex:0 0 auto; padding:9px 16px;" data-action="salvar-config-geral">Salvar</button></div>' +
+    (state.configGeralSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Salvo — vale ' + esc(state.configGeralIntervalo) + 's</div>' : '') +
+    '</div>';
   var filters = [{ id: 'todos', label: 'Todos' }].concat(state.allGroups.map(function (g) { return { id: g.slug, label: g.nome }; }));
   html += '<div class="filter-row">';
   filters.forEach(function (f) { html += '<button class="filter-chip' + (state.painelFilter === f.id ? ' active' : '') + '" data-action="painel-filter" data-filter="' + f.id + '">' + esc(f.label) + '</button>'; });
@@ -1335,6 +1355,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'remover-passo') removerPasso(parseInt(el.getAttribute('data-idx'), 10));
   else if (action === 'toggle-mural-expand') toggleMuralExpand(el.getAttribute('data-id'));
   else if (action === 'painel-filter') { state.painelFilter = el.getAttribute('data-filter'); loadPainelMembers(); }
+  else if (action === 'salvar-config-geral') salvarConfigGeralIntervalo();
   else if (action === 'abrir-add') { state.showAddForm = true; render(); }
   else if (action === 'cancelar-add') { state.showAddForm = false; render(); }
   else if (action === 'confirmar-add') adicionarIntegrante();
@@ -1362,6 +1383,7 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-email-input') state.newEmail = e.target.value;
   else if (id === 'new-name-input') state.newName = e.target.value;
   else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
+  else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
   else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
   else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
