@@ -143,6 +143,7 @@
 
   .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; }
   .message-card.grouped { margin-top: -6px; padding-top: 7px; }
+  .message-card.message-informe { background: #FBF5E8; border: 1px solid #E4CA8B; }
   .grouped-row { min-height: 12px; margin-bottom: 4px; }
 
   .mural-fanout { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 11px 12px; margin-bottom: 16px; }
@@ -316,6 +317,7 @@ var state = {
   myGroups: [], expandedEscolaId: null,
   activeGroupId: null, activeGroupMeta: null,
   threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false,
+  minhasConfirmacoesMensagens: [], showInformeForm: false, informeFormTexto: '', informeFormExigeConfirmacao: false,
   muralPosts: [], reviewQueue: [],
   showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
   muralFormComTopicos: false, muralFormTopicosTitulo: '',
@@ -360,7 +362,7 @@ async function boot() {
 
 async function onSignedIn(session) {
   state.session = session;
-  var { data: perfil, error } = await sb.from('perfis').select('*').eq('id', session.user.id).single();
+  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, is_moderador, is_revisor, ativo, criado_em, consentimento_em').eq('id', session.user.id).single();
   if (error || !perfil) {
     state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
     await sb.auth.signOut();
@@ -478,7 +480,7 @@ async function loadThread(grupo) {
   state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
   state.screen = 'thread'; state.threadMessages = []; state.threadMembers = []; state.composeError = '';
   render();
-  var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
+  var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
   var membersPromise = state.perfil.is_moderador
     ? sb.from('memberships').select('perfil_id, papel, pode_postar, perfis(nome_completo, funcao)').eq('grupo_id', grupo.id)
     : Promise.resolve({ data: [] });
@@ -497,6 +499,11 @@ async function loadThread(grupo) {
   });
   var minhaMembership = (membersRes.data || []).filter(function (row) { return row.perfil_id === state.session.user.id; })[0];
   state.souMembroComPostagem = !!(minhaMembership && minhaMembership.pode_postar);
+  var idsQueExigem = msgs.filter(function (m) { return m.exige_confirmacao; }).map(function (m) { return m.id; });
+  if (idsQueExigem.length) {
+    var { data: conf } = await sb.from('mensagens_confirmacoes').select('mensagem_id').eq('perfil_id', state.session.user.id).in('mensagem_id', idsQueExigem);
+    state.minhasConfirmacoesMensagens = (conf || []).map(function (c) { return c.mensagem_id; });
+  } else { state.minhasConfirmacoesMensagens = []; }
   render();
   subscribeThread(grupo.id);
 }
@@ -521,6 +528,25 @@ async function sendMessage() {
   if (error) { state.composeError = error.message; render(); return; }
   state.composeText = '';
   await loadThread(state.activeGroupMeta);
+}
+
+async function postarInforme() {
+  var texto = state.informeFormTexto.trim();
+  if (!texto || !state.activeGroupId) { state.banner = 'Escreva o texto do informe.'; render(); return; }
+  var { error } = await sb.from('mensagens').insert({
+    grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto,
+    eh_informe: true, exige_confirmacao: state.informeFormExigeConfirmacao
+  });
+  if (error) { state.banner = error.message; render(); return; }
+  state.showInformeForm = false; state.informeFormTexto = ''; state.informeFormExigeConfirmacao = false;
+  await loadThread(state.activeGroupMeta);
+}
+
+async function confirmarLeituraMensagem(id) {
+  var { error } = await sb.from('mensagens_confirmacoes').insert({ mensagem_id: id, perfil_id: state.session.user.id });
+  if (error) { state.banner = error.message; render(); return; }
+  state.minhasConfirmacoesMensagens.push(id);
+  render();
 }
 
 async function removeMessage(id) {
@@ -935,9 +961,12 @@ function renderThread() {
   var prevAuthor = null;
   state.threadMessages.forEach(function (m) {
     var authorName = nomeExibir(m._autor) + (m._autor.id === state.session.user.id ? ' (você)' : '');
-    var sameAsPrev = m.autor_id === prevAuthor;
+    var sameAsPrev = m.autor_id === prevAuthor && !m.eh_informe;
     var authorColor = m._autor.is_moderador ? '#C79A3D' : '#16294B';
-    html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + '">';
+    html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + (m.eh_informe ? ' message-informe' : '') + '">';
+    if (m.eh_informe) {
+      html += '<div class="pin-tag" style="margin-bottom:4px;">' + icon('pin', 12, 'none', '#C79A3D') + '<span class="pin-label">Informe do Cartório</span></div>';
+    }
     if (sameAsPrev) {
       html += '<div class="pin-row grouped-row"><div>' + (m.fixado ? icon('pin', 12, 'none', '#C79A3D') : '') + '</div><span style="font-size:10.5px; color:#9B9484;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
     } else {
@@ -949,6 +978,14 @@ function renderThread() {
     } else {
       html += '<div class="post-text">' + esc(m.texto) + '</div>';
       if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
+      if (m.exige_confirmacao) {
+        var confirmado = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
+        if (confirmado) {
+          html += '<div class="hint" style="margin-top:8px; color:#3E6E4E;">' + icon('chev', 12, '#3E6E4E') + ' Leitura confirmada</div>';
+        } else {
+          html += '<button class="btn-approve" style="margin-top:8px; width:100%;" data-action="confirmar-leitura-mensagem" data-id="' + m.id + '">Confirmar leitura</button>';
+        }
+      }
     }
     html += '</div>';
     prevAuthor = m.autor_id;
@@ -964,8 +1001,26 @@ function canPostHint() {
   return true;
 }
 
+function renderInformeBox() {
+  if (!state.perfil.is_moderador || state.activeGroupMeta.slug === 'geral') return '';
+  var html = '';
+  if (state.showInformeForm) {
+    html += '<div class="add-form" style="margin-bottom:10px;"><div class="add-form-title">Postar informe do Cartório neste grupo</div>' +
+      '<div class="hint" style="margin:0 2px 8px;">Aparece destacado pra todo mundo do grupo, mesmo você não sendo integrante.</div>' +
+      '<textarea id="informe-texto-input" placeholder="Texto do informe" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.informeFormTexto) + '</textarea>' +
+      '<div class="toggle-row" style="margin-bottom:12px;"><div>' +
+      '<div class="toggle-title" style="font-size:12.5px;">Exigir confirmação de leitura</div>' +
+      '<div class="toggle-desc">Integrantes do grupo veem um botão "Confirmar leitura" até confirmarem</div></div>' +
+      '<button class="switch" style="background:' + (state.informeFormExigeConfirmacao ? '#16294B' : '#D8D2C4') + ';" data-action="toggle-informe-confirmacao"><div class="switch-knob" style="left:' + (state.informeFormExigeConfirmacao ? '21px' : '3px') + ';"></div></button></div>' +
+      '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-informe">Postar informe</button><button class="btn-secondary" data-action="cancelar-informe">Cancelar</button></div></div>';
+  } else {
+    html += '<button class="add-dashed" data-action="abrir-form-informe" style="margin-bottom:10px;">' + icon('pin', 15, 'none', '#C79A3D') + ' Postar informe do Cartório aqui</button>';
+  }
+  return html;
+}
+
 function renderThreadComposer() {
-  var html = '<div class="composer">';
+  var html = renderInformeBox() + '<div class="composer">';
   if (!state.online) {
     html += '<div class="composer-blocked">Sem conexão — a mensagem será enviada ao reconectar.</div>';
   } else if (!canPostHint()) {
@@ -1169,6 +1224,11 @@ document.addEventListener('click', function (e) {
   else if (action === 'toggle-audiencia') toggleAudiencia(el.getAttribute('data-cat'));
   else if (action === 'toggle-exige-confirmacao') { state.muralFormExigeConfirmacao = !state.muralFormExigeConfirmacao; render(); }
   else if (action === 'confirmar-leitura') confirmarLeitura(el.getAttribute('data-id'));
+  else if (action === 'confirmar-leitura-mensagem') confirmarLeituraMensagem(el.getAttribute('data-id'));
+  else if (action === 'abrir-form-informe') { state.showInformeForm = true; render(); }
+  else if (action === 'cancelar-informe') { state.showInformeForm = false; state.informeFormTexto = ''; state.informeFormExigeConfirmacao = false; render(); }
+  else if (action === 'toggle-informe-confirmacao') { state.informeFormExigeConfirmacao = !state.informeFormExigeConfirmacao; render(); }
+  else if (action === 'enviar-informe') postarInforme();
   else if (action === 'enviar-mural') criarAvisoMural();
   else if (action === 'aprovar-mural') aprovarMural(el.getAttribute('data-id'));
   else if (action === 'rejeitar-mural') rejeitarMural(el.getAttribute('data-id'));
@@ -1202,6 +1262,7 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-name-input') state.newName = e.target.value;
   else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
+  else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
 });
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
