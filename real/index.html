@@ -53,6 +53,11 @@
   .post-author { font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 5px; }
   .post-text { font-size: 13.5px; line-height: 1.5; color: #2B2A25; white-space: pre-line; }
   .link-btn { margin-top: 8px; background: none; border: none; padding: 0; font-size: 12.5px; font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 4px; }
+  .icon-btn { background: #F7F0E8; border: none; border-radius: 7px; width: 30px; height: 30px; flex: 0 0 auto; color: var(--navy); display: flex; align-items: center; justify-content: center; }
+  .icon-btn:disabled { opacity: .35; }
+  .historico-box { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .historico-item { font-size: 12px; color: #4A473E; }
+  .historico-meta { font-size: 11px; color: #9B9484; margin-top: 2px; }
   .steps { margin-top: 10px; border-top: 1px solid var(--divider); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
   .step { display: flex; gap: 8px; align-items: baseline; }
   .step-date { font-size: 11.5px; font-weight: 700; color: var(--gold); flex: 0 0 auto; width: 66px; }
@@ -243,7 +248,10 @@ var ICONS = {
   cifrao: '<circle cx="10" cy="10" r="6.5"/><path d="M10 7v6M8 12.2c.3.5 1 .8 2 .8 1.3 0 2-.6 2-1.5 0-2-4-.7-4-2.7 0-.9.7-1.5 2-1.5 1 0 1.7.3 2 .8"/>',
   vest: '<path d="M7.5 4L10 6l2.5-2 3 2-1.5 2.5-1.5-.8V16h-5V7.7l-1.5.8L4.5 6l3-2z"/>',
   pin: '<path d="M11 2l4 4-3 3 .5 5-2.5-2.5L7 14l1.5-3L6 8l5-4 0 -2z"/>',
-  logout: '<path d="M8 4H5.5A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8M13 13.5L17 10L13 6.5M17 10H7.5"/>'
+  logout: '<path d="M8 4H5.5A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8M13 13.5L17 10L13 6.5M17 10H7.5"/>',
+  arrowUp: '<path d="M5 12.5L10 7.5L15 12.5"/>',
+  edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
+  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>'
 };
 function icon(name, size, stroke, fill) {
   size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
@@ -305,6 +313,7 @@ var state = {
   muralFormAudienciaTodos: true, muralFormAudiencia: [], muralFormExigeConfirmacao: false,
   minhasConfirmacoes: [],
   expandedMuralId: null,
+  editingMuralId: null, historicoMural: {}, expandedHistoricoId: null,
   faqSearch: '', activeFaqCat: null, expandedFaqId: null,
   painelFilter: 'todos', allGroups: [], painelMembers: [],
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
@@ -419,7 +428,7 @@ async function attachAutores(posts) {
 }
 
 async function loadMural() {
-  var { data } = await sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('criado_em', { ascending: false });
+  var { data } = await sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
   state.muralPosts = data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
   if (state.perfil.is_moderador || state.perfil.is_revisor) {
     var { data: pend } = await sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true });
@@ -519,14 +528,55 @@ async function criarAvisoMural() {
   }
   var audiencia = state.muralFormAudienciaTodos ? ['todos'] : state.muralFormAudiencia.slice();
   if (!state.muralFormAudienciaTodos && !audiencia.length) { state.banner = 'Marque pelo menos um público, ou selecione "Todos".'; render(); return; }
-  var novo = { autor_id: state.session.user.id, titulo: titulo, texto: texto || null, status: 'pendente', visibilidade: audiencia, exige_confirmacao: state.muralFormExigeConfirmacao };
-  if (state.muralFormComTopicos && passos.length) { novo.passos = passos; novo.passos_titulo = topicosTitulo; }
-  var { error } = await sb.from('mural_posts').insert(novo);
+  var campos = { titulo: titulo, texto: texto || null, visibilidade: audiencia, exige_confirmacao: state.muralFormExigeConfirmacao, passos: null, passos_titulo: null };
+  if (state.muralFormComTopicos && passos.length) { campos.passos = passos; campos.passos_titulo = topicosTitulo; }
+  var error;
+  if (state.editingMuralId) {
+    var res = await sb.from('mural_posts').update(campos).eq('id', state.editingMuralId);
+    error = res.error;
+  } else {
+    var novo = Object.assign({ autor_id: state.session.user.id, status: 'pendente' }, campos);
+    var res2 = await sb.from('mural_posts').insert(novo);
+    error = res2.error;
+  }
   if (error) { state.banner = error.message; render(); return; }
-  state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = [];
+  state.showMuralForm = false; state.editingMuralId = null; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = [];
   state.muralFormComTopicos = false; state.muralFormTopicosTitulo = '';
   state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false;
   await loadMural(); render();
+}
+
+function editarAvisoMural(id) {
+  var post = state.muralPosts.concat(state.reviewQueue).filter(function (p) { return p.id === id; })[0];
+  if (!post) return;
+  state.editingMuralId = id;
+  state.muralFormTitulo = post.titulo || '';
+  state.muralFormTexto = post.texto || '';
+  state.muralFormComTopicos = !!(post.passos && post.passos.length);
+  state.muralFormTopicosTitulo = post.passos_titulo || '';
+  state.muralFormPassos = (post.passos || []).map(function (p) { return { data: p.data || '', texto: p.texto || '' }; });
+  var vis = post.visibilidade || ['todos'];
+  state.muralFormAudienciaTodos = vis.indexOf('todos') !== -1;
+  state.muralFormAudiencia = state.muralFormAudienciaTodos ? [] : vis.slice();
+  state.muralFormExigeConfirmacao = !!post.exige_confirmacao;
+  state.showMuralForm = true;
+  render();
+}
+
+async function moverMural(id, direcao) {
+  var { error } = await sb.rpc('mural_mover', { p_id: id, p_direcao: direcao });
+  if (error) { state.banner = error.message; render(); return; }
+  await loadMural(); render();
+}
+
+async function verHistoricoMural(id) {
+  if (state.expandedHistoricoId === id) { state.expandedHistoricoId = null; render(); return; }
+  if (!state.historicoMural[id]) {
+    var { data, error } = await sb.from('mural_posts_historico').select('*, perfis(nome_completo)').eq('post_id', id).order('editado_em', { ascending: false });
+    state.historicoMural[id] = error ? [] : (data || []);
+  }
+  state.expandedHistoricoId = id;
+  render();
 }
 
 function toggleAudiencia(categoria) {
@@ -540,6 +590,20 @@ async function confirmarLeitura(postId) {
   if (error) { state.banner = error.message; render(); return; }
   state.minhasConfirmacoes.push(postId);
   render();
+}
+
+function renderHistoricoMural(id) {
+  var itens = state.historicoMural[id] || [];
+  if (!itens.length) return '<div class="historico-box"><div class="hint">Nenhuma edição anterior registrada.</div></div>';
+  var html = '<div class="historico-box">';
+  itens.forEach(function (h) {
+    var autor = h.perfis ? h.perfis.nome_completo : 'Alguém';
+    html += '<div class="historico-item"><strong>' + esc(h.titulo || '(sem título)') + '</strong>' +
+      (h.texto ? '<div>' + esc(h.texto) + '</div>' : '') +
+      '<div class="historico-meta">Versão anterior a esta edição · ' + esc(autor) + ' · ' + esc(fmtHora(h.editado_em)) + '</div></div>';
+  });
+  html += '</div>';
+  return html;
 }
 
 var ROTULO_AUDIENCIA = { todos: 'Todos', administradores: 'Administradores', operadores: 'Operadores', mesarios: 'Mesários' };
@@ -691,13 +755,15 @@ function renderMural() {
       } else {
         html += '<div class="hint" style="margin-top:8px;">Aguardando revisão do desenvolvedor antes de publicar.</div>';
       }
+      if (state.perfil.is_moderador) html += '<button class="link-btn" style="margin-top:6px;" data-action="editar-mural" data-id="' + p.id + '">' + icon('plus', 13) + ' Editar</button>';
       html += '</div>';
     });
     html += '</div>';
   }
   if (state.perfil.is_moderador) {
     if (state.showMuralForm) {
-      html += '<div class="add-form"><div class="add-form-title">Novo aviso no Mural</div>' +
+      html += '<div class="add-form"><div class="add-form-title">' + (state.editingMuralId ? 'Editar aviso do Mural' : 'Novo aviso no Mural') + '</div>' +
+        (state.editingMuralId ? '<div class="hint" style="margin:0 2px 8px; color:#A24B3E;">Se este aviso já estiver publicado, a edição volta ele pra fila de revisão antes de aparecer atualizado no Mural.</div>' : '') +
         '<div class="hint" style="margin:0 2px 8px;">O cabeçalho "Cartório Eleitoral · 4ª Zona" já aparece sozinho em cima de todo aviso — não precisa digitar isso. O título é a manchete do aviso, ex.: "Fechamento dos portões às 17h".</div>' +
         '<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório) — ex.: Fechamento dos portões às 17h" value="' + esc(state.muralFormTitulo) + '">' +
         '<textarea id="mural-texto-input" placeholder="Texto do aviso (opcional)" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.muralFormTexto) + '</textarea>';
@@ -733,12 +799,12 @@ function renderMural() {
         '<div class="toggle-title" style="font-size:12.5px;">Exigir confirmação de leitura</div>' +
         '<div class="toggle-desc">Quem for do público-alvo vê um botão "Confirmar leitura" e um aviso até confirmar</div></div>' +
         '<button class="switch" style="background:' + (state.muralFormExigeConfirmacao ? '#16294B' : '#D8D2C4') + ';" data-action="toggle-exige-confirmacao"><div class="switch-knob" style="left:' + (state.muralFormExigeConfirmacao ? '21px' : '3px') + ';"></div></button></div>';
-      html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-mural">Enviar para revisão</button><button class="btn-secondary" data-action="cancelar-mural">Cancelar</button></div></div>';
+      html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-mural">' + (state.editingMuralId ? 'Salvar edição' : 'Enviar para revisão') + '</button><button class="btn-secondary" data-action="cancelar-mural">Cancelar</button></div></div>';
     } else {
       html += '<button class="add-dashed" data-action="abrir-form-mural">' + icon('plus', 15) + ' Novo aviso no Mural</button>';
     }
   }
-  state.muralPosts.forEach(function (post) {
+  state.muralPosts.forEach(function (post, idx) {
     html += '<div class="card"><div class="pin-row"><div class="pin-tag">';
     if (post.fixado) html += icon('pin', 13, 'none', '#C79A3D') + '<span class="pin-label">Fixado</span>';
     html += '</div><span class="post-time">' + esc(fmtHora(post.criado_em)) + '</span></div>' +
@@ -754,6 +820,17 @@ function renderMural() {
       } else {
         html += '<button class="btn-approve" style="margin-top:10px; width:100%;" data-action="confirmar-leitura" data-id="' + post.id + '">Confirmar leitura</button>';
       }
+    }
+    if (state.perfil.is_moderador) {
+      var mesmoBloco = state.muralPosts.filter(function (p) { return p.fixado === post.fixado; });
+      var posNoBloco = mesmoBloco.indexOf(post);
+      html += '<div class="mod-toolbar" style="display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
+        '<button class="icon-btn" title="Mover pra cima" data-action="mover-mural-cima" data-id="' + post.id + '"' + (posNoBloco === 0 ? ' disabled' : '') + '>' + icon('arrowUp', 14) + '</button>' +
+        '<button class="icon-btn" title="Mover pra baixo" data-action="mover-mural-baixo" data-id="' + post.id + '"' + (posNoBloco === mesmoBloco.length - 1 ? ' disabled' : '') + '>' + icon('chev', 14) + '</button>' +
+        '<button class="link-btn" data-action="editar-mural" data-id="' + post.id + '">' + icon('edit', 13) + ' Editar</button>' +
+        '<button class="link-btn" data-action="ver-historico-mural" data-id="' + post.id + '">' + icon('clock', 13) + ' Histórico</button>' +
+        '</div>';
+      if (state.expandedHistoricoId === post.id) html += renderHistoricoMural(post.id);
     }
     html += '</div>';
   });
@@ -986,8 +1063,12 @@ document.addEventListener('click', function (e) {
   else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
-  else if (action === 'abrir-form-mural') { state.showMuralForm = true; render(); }
-  else if (action === 'cancelar-mural') { state.showMuralForm = false; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false; render(); }
+  else if (action === 'abrir-form-mural') { state.showMuralForm = true; state.editingMuralId = null; render(); }
+  else if (action === 'cancelar-mural') { state.showMuralForm = false; state.editingMuralId = null; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false; render(); }
+  else if (action === 'editar-mural') editarAvisoMural(el.getAttribute('data-id'));
+  else if (action === 'mover-mural-cima') moverMural(el.getAttribute('data-id'), 'cima');
+  else if (action === 'mover-mural-baixo') moverMural(el.getAttribute('data-id'), 'baixo');
+  else if (action === 'ver-historico-mural') verHistoricoMural(el.getAttribute('data-id'));
   else if (action === 'toggle-topicos') { state.muralFormComTopicos = !state.muralFormComTopicos; if (state.muralFormComTopicos && !state.muralFormPassos.length) state.muralFormPassos.push({ data: '', texto: '' }); render(); }
   else if (action === 'audiencia-todos') { state.muralFormAudienciaTodos = true; render(); }
   else if (action === 'audiencia-mescla') { state.muralFormAudienciaTodos = false; render(); }
