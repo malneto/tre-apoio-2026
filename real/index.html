@@ -191,40 +191,9 @@ var SUPABASE_URL = 'https://zetednplnwdhatpmcimo.supabase.co';
 var SUPABASE_ANON_KEY = 'sb_publishable_LfT9I343HLNqwM4FlmNeaQ_8omqC0MH';
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-var FAQ_DATA = {
-  urna: { name: 'Urna Eletrônica', items: [
-    { q: 'A urna travou, o que eu faço?', a: 'O presidente de mesa deve fazer a única contingência permitida: ligar e desligar a urna eletrônica. Se não resolver, o administrador de prédio deve contatar imediatamente o Cartório Eleitoral.' },
-    { q: 'Até que horas o presidente deve emitir a Zerésima?', a: 'Até, no máximo, 7h30. O resumo da zerésima deve ficar afixado na entrada da seção.' },
-    { q: 'Preciso afixar algo na entrada da seção?', a: 'Sim: o resumo da zerésima e, ao final, a via do Boletim de Urna.' },
-    { q: 'Como a urna deve ficar posicionada na seção?', a: 'Na cabine de votação, posicionada de forma a garantir o sigilo do voto — só a eleitora ou o eleitor pode ver o visor, com livre movimentação na seção. É vedado afixar lista com nome ou número de inscrição eleitoral nas dependências da seção ou do local de votação (Resolução TSE 23.751/2026, art. 19, e Código Eleitoral, art. 138).' }
-  ]},
-  encerramento: { name: 'Encerramento da Seção', items: [
-    { q: 'O que preciso entregar pra Junta Eleitoral ao final da votação?', a: 'Assim que os trabalhos da seção forem encerrados, o administrador de prédio deve se apresentar à Junta da 4ª Zona Eleitoral com o envelope contendo: a Zerésima, 2 Boletins de Urna (BU), o Boletim de Eleitores Habilitados pela Biometria (BEHB), o Boletim de Identificação de Mesários e a ata de cada seção. A Junta confere os documentos e libera o administrador.' },
-    { q: 'Preciso checar alguma coisa antes de fechar o local de votação?', a: 'Sim. Antes de encerrar, verifique se há eleitores em banheiros ou corredores que ainda não votaram — oriente-os a ir imediatamente para a fila da seção deles. Todos que entrarem até as 17h têm direito de votar.' }
-  ]},
-  justificativa: { name: 'Justificativa Eleitoral', items: [
-    { q: 'O eleitor não vai votar, o que ele precisa?', a: 'Preencher o Requerimento de Justificativa Eleitoral (RJE) com o e-título instalado e atualizado, uma certidão de quitação eleitoral ou, pelo menos, o número do título — a urna só reconhece números.' },
-    { q: 'Quem coordena a fila de quem vai justificar?', a: 'O secretário da mesa receptora, que deve saber previamente sobre a necessidade do RJE e o número de inscrição eleitoral.' }
-  ]},
-  financeiro: { name: 'Financeiro (PIX)', items: [
-    { q: 'Quem recebe o PIX do auxílio-alimentação?', a: 'O responsável financeiro — pelo menos 2 por local com várias seções — chave PIX obrigatoriamente CPF, via Banco do Brasil. Cada mesário assina o formulário imediatamente ao receber.' },
-    { q: 'Um mesário faltou, o que fazer com o valor dele?', a: 'O valor deve ser recolhido para o PIX da chefia da 4ª Zona Eleitoral. No formulário, o campo de assinatura do faltante fica em branco.' },
-    { q: 'Houve substituição de mesário no dia, e agora?', a: 'A situação deve constar em ata. Um formulário específico permite escrever o nome do substituto, que assina normalmente.' }
-  ]},
-  midia: { name: 'Mídia de Resultado', items: [
-    { q: 'Quantos Pontos de Transmissão Secundários (PTS) existem este ano?', a: 'A 4ª ZE solicitou 6 PTS este ano — na última eleição foram 3.' },
-    { q: 'O que o responsável pela mídia de resultado faz?', a: 'Segue para o PTS indicado no seu roteiro e entrega a mídia ao responsável, que fará a leitura no Sistema Transportador.' }
-  ]},
-  fiscalizacao: { name: 'Fiscalização', items: [
-    { q: 'Quantos fiscais por partido são permitidos por seção?', a: 'Até 2 por partido, coligação ou federação, atuando um de cada vez. Candidatas e candidatos têm atuação garantida por direito próprio (fiscal nato).' },
-    { q: 'O que um fiscal pode fazer?', a: 'Fiscalizar todas as fases da votação e impugnar ou protestar, verbalmente ou por escrito, sobre a identidade do eleitor ou o andamento da votação.' }
-  ]},
-  vestuario: { name: 'Vestuário e Crachá', items: [
-    { q: 'Posso usar colete ou uniforme padronizado?', a: 'É vedada a padronização de vestuário. Se o crachá ou vestuário estiver em desacordo, o presidente deve orientar os ajustes necessários.' },
-    { q: 'Existe um administrador responsável pela acessibilidade?', a: 'Sim. Um dos administradores do prédio deve ser o coordenador de acessibilidade, com colete de identificação próprio, priorizando o atendimento a pessoas com deficiência.' }
-  ]}
-};
-var FAQ_CAT_ORDER = ['urna', 'encerramento', 'justificativa', 'financeiro', 'midia', 'fiscalizacao', 'vestuario'];
+// FAQ agora vem do banco (tabela faq_perguntas, ver loadFaq/categoriasFaq) —
+// os ícones por categoria continuam mapeados aqui (FAQ_CAT_ICON), pra
+// categoria nova sem ícone específico cair num ícone padrão.
 var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
 
 var ICON_STYLE = {
@@ -259,6 +228,7 @@ var ICONS = {
   pin: '<path d="M11 2l4 4-3 3 .5 5-2.5-2.5L7 14l1.5-3L6 8l5-4 0 -2z"/>',
   logout: '<path d="M8 4H5.5A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8M13 13.5L17 10L13 6.5M17 10H7.5"/>',
   arrowUp: '<path d="M5 12.5L10 7.5L15 12.5"/>',
+  check: '<path d="M4 10.5L8 14.5L16 5.5"/>',
   edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
   clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>'
 };
@@ -326,7 +296,8 @@ var state = {
   minhasConfirmacoes: [],
   expandedMuralId: null,
   editingMuralId: null, historicoMural: {}, expandedHistoricoId: null,
-  faqSearch: '', activeFaqCat: null, expandedFaqId: null,
+  faqSearch: '', activeFaqCat: null, expandedFaqId: null, faqPerguntas: [], faqLoaded: false,
+  showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [],
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
@@ -681,6 +652,55 @@ async function rejeitarMural(id) {
   await loadMural(); render();
 }
 
+var FAQ_CAT_ICON = { urna: 'urna', encerramento: 'logout', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' };
+
+async function loadFaq() {
+  var { data, error } = await sb.from('faq_perguntas').select('*').order('ordem');
+  state.faqPerguntas = error ? [] : (data || []);
+  state.faqLoaded = true;
+  render();
+}
+
+function categoriasFaq() {
+  var porSlug = {};
+  var ordem = [];
+  state.faqPerguntas.forEach(function (p) {
+    if (!porSlug[p.categoria_slug]) { porSlug[p.categoria_slug] = { slug: p.categoria_slug, nome: p.categoria_nome, itens: [] }; ordem.push(p.categoria_slug); }
+    porSlug[p.categoria_slug].itens.push(p);
+  });
+  return ordem.map(function (slug) { return porSlug[slug]; });
+}
+
+async function criarFaq() {
+  var categoriaSlug = state.faqFormCategoriaNova.trim() ? slugify(state.faqFormCategoriaNova.trim()) : state.faqFormCategoria;
+  var categoriaNome = state.faqFormCategoriaNova.trim() || (categoriasFaq().filter(function (c) { return c.slug === categoriaSlug; })[0] || {}).nome;
+  var pergunta = state.faqFormPergunta.trim(), resposta = state.faqFormResposta.trim();
+  if (!categoriaSlug || !categoriaNome) { state.banner = 'Escolha uma categoria ou digite o nome de uma nova.'; render(); return; }
+  if (!pergunta || !resposta) { state.banner = 'Preencha a pergunta e a resposta.'; render(); return; }
+  if (exigeVerificacao()) return;
+  var maiorOrdem = state.faqPerguntas.reduce(function (max, p) { return Math.max(max, p.ordem); }, 0);
+  var { error } = await sb.from('faq_perguntas').insert({
+    categoria_slug: categoriaSlug, categoria_nome: categoriaNome, pergunta: pergunta, resposta: resposta,
+    audiencia: state.faqFormAudiencia, criado_por: state.session.user.id, ordem: maiorOrdem + 1
+  });
+  if (error) { state.banner = error.message; render(); return; }
+  state.showFaqForm = false; state.faqFormCategoria = ''; state.faqFormCategoriaNova = '';
+  state.faqFormPergunta = ''; state.faqFormResposta = ''; state.faqFormAudiencia = 'todos';
+  await loadFaq();
+}
+
+async function removerFaq(id) {
+  if (!confirm('Remover essa pergunta do FAQ?')) return;
+  var { error } = await sb.from('faq_perguntas').delete().eq('id', id);
+  if (error) { state.banner = error.message; render(); return; }
+  await loadFaq();
+}
+
+function slugify(s) {
+  return semAcentoDisplay(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'geral';
+}
+function semAcentoDisplay(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+
 async function loadPainel() {
   var { data: grupos } = await sb.from('grupos').select('*').order('nome');
   state.allGroups = grupos || [];
@@ -861,7 +881,7 @@ function renderMural() {
     if (post.exige_confirmacao) {
       var confirmado = state.minhasConfirmacoes.indexOf(post.id) !== -1;
       if (confirmado) {
-        html += '<div class="hint" style="margin-top:10px; color:#3E6E4E;">' + icon('chev', 12, '#3E6E4E') + ' Leitura confirmada</div>';
+        html += '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:10px;">' + icon('check', 18, '#3E6E4E') + ' Leitura confirmada</div>';
       } else {
         html += '<button class="btn-approve" style="margin-top:10px; width:100%;" data-action="confirmar-leitura" data-id="' + post.id + '">Confirmar leitura</button>';
       }
@@ -975,7 +995,7 @@ function renderThread() {
       if (m.exige_confirmacao) {
         var confirmado = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
         if (confirmado) {
-          html += '<div class="hint" style="margin-top:8px; color:#3E6E4E;">' + icon('chev', 12, '#3E6E4E') + ' Leitura confirmada</div>';
+          html += '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Leitura confirmada</div>';
         } else {
           html += '<button class="btn-approve" style="margin-top:8px; width:100%;" data-action="confirmar-leitura-mensagem" data-id="' + m.id + '">Confirmar leitura</button>';
         }
@@ -1030,39 +1050,68 @@ function renderThreadComposer() {
   return html;
 }
 
+var ROTULO_AUDIENCIA_FAQ = { administradores: 'Administradores', operadores: 'Operadores', mesarios: 'Mesários' };
+
+function renderFaqForm() {
+  if (!state.perfil.is_moderador) return '';
+  if (!state.showFaqForm) return '<button class="add-dashed" data-action="abrir-form-faq" style="margin-bottom:12px;">' + icon('plus', 15, 'none', '#C79A3D') + ' Nova pergunta no FAQ</button>';
+  var cats = categoriasFaq();
+  var html = '<div class="add-form" style="margin-bottom:12px;"><div class="add-form-title">Nova pergunta no FAQ</div>';
+  html += '<select id="faq-categoria-select" style="margin-bottom:8px;"><option value="">Escolha uma categoria…</option>';
+  cats.forEach(function (c) { html += '<option value="' + esc(c.slug) + '"' + (state.faqFormCategoria === c.slug ? ' selected' : '') + '>' + esc(c.nome) + '</option>'; });
+  html += '</select>';
+  html += '<input type="text" id="faq-categoria-nova-input" placeholder="…ou digite o nome de uma categoria nova" value="' + esc(state.faqFormCategoriaNova) + '">';
+  html += '<input type="text" id="faq-pergunta-input" placeholder="Pergunta" value="' + esc(state.faqFormPergunta) + '">';
+  html += '<textarea id="faq-resposta-input" placeholder="Resposta" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.faqFormResposta) + '</textarea>';
+  html += '<div class="hint" style="margin:0 2px 8px;">Quem pode ver esta pergunta:</div><div class="filter-row" style="margin-bottom:12px;">';
+  [['todos', 'Todos'], ['administradores', 'Administradores'], ['operadores', 'Operadores'], ['mesarios', 'Mesários']].forEach(function (opt) {
+    html += '<button class="filter-chip' + (state.faqFormAudiencia === opt[0] ? ' active' : '') + '" data-action="faq-audiencia" data-aud="' + opt[0] + '">' + opt[1] + '</button>';
+  });
+  html += '</div>';
+  html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-faq">Adicionar</button><button class="btn-secondary" data-action="cancelar-faq">Cancelar</button></div></div>';
+  return html;
+}
+
 function renderFaq() {
-  var html = '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '"></div>';
+  var html = renderFaqForm();
+  html += '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '"></div>';
+  var cats = categoriasFaq();
   if (state.faqSearch.trim().length > 0) {
     var q = state.faqSearch.trim().toLowerCase(); var results = [];
-    FAQ_CAT_ORDER.forEach(function (catId) {
-      FAQ_DATA[catId].items.forEach(function (item, idx) {
-        if ((item.q + ' ' + item.a).toLowerCase().indexOf(q) !== -1) results.push({ catName: FAQ_DATA[catId].name, key: catId + '-' + idx, q: item.q, a: item.a });
+    cats.forEach(function (cat) {
+      cat.itens.forEach(function (item) {
+        if ((item.pergunta + ' ' + item.resposta).toLowerCase().indexOf(q) !== -1) results.push(item);
       });
     });
     html += '<div class="eyebrow">' + results.length + ' resultado(s) para "' + esc(state.faqSearch.trim()) + '"</div>';
-    results.forEach(function (r) { html += renderFaqItem(r); });
+    results.forEach(function (r) { html += renderFaqItem(r, true); });
   } else if (state.activeFaqCat) {
-    var cat = FAQ_DATA[state.activeFaqCat];
-    html += '<button class="link-btn" data-action="faq-back" style="margin-bottom:12px;">' + icon('back', 14) + ' Categorias</button><div class="eyebrow">' + esc(cat.name) + '</div>';
-    cat.items.forEach(function (item, idx) { html += renderFaqItem({ key: state.activeFaqCat + '-' + idx, q: item.q, a: item.a }); });
+    var cat = cats.filter(function (c) { return c.slug === state.activeFaqCat; })[0];
+    html += '<button class="link-btn" data-action="faq-back" style="margin-bottom:12px;">' + icon('back', 14) + ' Categorias</button><div class="eyebrow">' + esc(cat ? cat.nome : '') + '</div>';
+    (cat ? cat.itens : []).forEach(function (item) { html += renderFaqItem(item, false); });
+  } else if (!cats.length) {
+    html += '<div class="hint">Nenhuma pergunta cadastrada ainda.</div>';
   } else {
     html += '<div class="eyebrow">Categorias</div>';
-    FAQ_CAT_ORDER.forEach(function (catId) {
-      var cat = FAQ_DATA[catId];
-      var iconName = { urna: 'urna', encerramento: 'logout', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' }[catId];
-      html += '<button class="group-card" data-action="open-faq-cat" data-cat="' + catId + '"><div class="faq-cat-icon">' + icon(iconName, 18) + '</div>' +
-        '<div style="flex:1 1 auto;"><div class="faq-cat-name">' + esc(cat.name) + '</div><div class="faq-cat-count">' + cat.items.length + ' perguntas</div></div>' + icon('chevRight', 15, '#C6BFAE') + '</button>';
+    cats.forEach(function (cat) {
+      var iconName = FAQ_CAT_ICON[cat.slug] || 'doc';
+      html += '<button class="group-card" data-action="open-faq-cat" data-cat="' + esc(cat.slug) + '"><div class="faq-cat-icon">' + icon(iconName, 18) + '</div>' +
+        '<div style="flex:1 1 auto;"><div class="faq-cat-name">' + esc(cat.nome) + '</div><div class="faq-cat-count">' + cat.itens.length + ' pergunta' + (cat.itens.length === 1 ? '' : 's') + '</div></div>' + icon('chevRight', 15, '#C6BFAE') + '</button>';
     });
   }
   return html;
 }
-function renderFaqItem(item) {
-  var expanded = state.expandedFaqId === item.key;
+function renderFaqItem(item, comCategoria) {
+  var expanded = state.expandedFaqId === item.id;
   var html = '<div class="card">';
-  if (item.catName) html += '<div class="faq-cat-tag">' + esc(item.catName) + '</div>';
-  html += '<button class="faq-q-btn" data-action="toggle-faq" data-key="' + item.key + '"><span class="faq-q">' + esc(item.q) + '</span>' +
+  if (comCategoria) html += '<div class="faq-cat-tag">' + esc(item.categoria_nome) + '</div>';
+  if (item.audiencia !== 'todos') html += '<div class="audience-badge" style="margin-top:0; margin-bottom:8px;">' + esc(ROTULO_AUDIENCIA_FAQ[item.audiencia] || item.audiencia) + '</div>';
+  html += '<button class="faq-q-btn" data-action="toggle-faq" data-key="' + item.id + '"><span class="faq-q">' + esc(item.pergunta) + '</span>' +
     '<span style="flex:0 0 auto; margin-top:2px; display:flex; transform:' + (expanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 14, '#8A8271') + '</span></button>';
-  if (expanded) html += '<div class="faq-a">' + esc(item.a) + '</div>';
+  if (expanded) {
+    html += '<div class="faq-a">' + esc(item.resposta) + '</div>';
+    if (state.perfil.is_moderador) html += '<button class="link-btn" style="color:#A24B3E; margin-top:8px;" data-action="remover-faq" data-id="' + item.id + '">' + icon('x', 13) + ' Remover</button>';
+  }
   html += '</div>'; return html;
 }
 
@@ -1143,7 +1192,7 @@ function renderPerfil() {
   html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Nome de exibição</div>' +
     '<div class="hint" style="margin:0 2px 8px;">É o nome que aparece do lado das suas mensagens nos grupos. Se deixar em branco, usamos só seu primeiro nome (' + esc(primeiroNome(p.nome_completo)) + ').</div>' +
     '<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" value="' + esc(state.perfilFormNomeExibicao) + '">' +
-    (state.perfilNomeSalvo ? '<div class="hint" style="color:#3E6E4E; margin-top:6px;">' + icon('chev', 12, '#3E6E4E') + ' Salvo</div>' : '') +
+    (state.perfilNomeSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-nome-exibicao">Salvar</button></div></div>';
   html += '<div class="hint">Sessão autenticada por link enviado ao seu e-mail cadastrado no TRE-PE. Toque no ícone no topo para sair.</div>';
   return html;
@@ -1222,6 +1271,7 @@ function go(screen) {
   if (screen !== 'thread') leaveThread();
   state.screen = screen; state.banner = '';
   if (screen === 'painel') loadPainel();
+  else if (screen === 'faq' && !state.faqLoaded) loadFaq();
   render();
 }
 
@@ -1256,6 +1306,11 @@ document.addEventListener('click', function (e) {
   else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
+  else if (action === 'abrir-form-faq') { state.showFaqForm = true; render(); }
+  else if (action === 'cancelar-faq') { state.showFaqForm = false; state.faqFormCategoria = ''; state.faqFormCategoriaNova = ''; state.faqFormPergunta = ''; state.faqFormResposta = ''; state.faqFormAudiencia = 'todos'; render(); }
+  else if (action === 'faq-audiencia') { state.faqFormAudiencia = el.getAttribute('data-aud'); render(); }
+  else if (action === 'enviar-faq') criarFaq();
+  else if (action === 'remover-faq') removerFaq(el.getAttribute('data-id'));
   else if (action === 'abrir-form-mural') { state.showMuralForm = true; state.editingMuralId = null; render(); }
   else if (action === 'cancelar-mural') { state.showMuralForm = false; state.editingMuralId = null; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false; render(); }
   else if (action === 'editar-mural') editarAvisoMural(el.getAttribute('data-id'));
@@ -1297,6 +1352,9 @@ document.addEventListener('input', function (e) {
   else if (id === 'login-titulo-input') { state.loginTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.loginTitulo); }
   else if (id === 'login-nascimento-input') { state.loginNascimento = maskData(e.target.value); aplicarMascara(e.target, state.loginNascimento); }
   else if (id === 'faq-search-input') { state.faqSearch = e.target.value; state.activeFaqCat = null; render(); }
+  else if (id === 'faq-categoria-nova-input') state.faqFormCategoriaNova = e.target.value;
+  else if (id === 'faq-pergunta-input') state.faqFormPergunta = e.target.value;
+  else if (id === 'faq-resposta-input') state.faqFormResposta = e.target.value;
   else if (id === 'compose-input') state.composeText = e.target.value;
   else if (id === 'mural-titulo-input') state.muralFormTitulo = e.target.value;
   else if (id === 'mural-texto-input') state.muralFormTexto = e.target.value;
@@ -1317,6 +1375,7 @@ document.addEventListener('keydown', function (e) {
 document.addEventListener('change', function (e) {
   if (e.target.id === 'new-group-select') state.newGroup = e.target.value;
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
+  else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
 window.addEventListener('online', function () { state.online = true; render(); });
 window.addEventListener('offline', function () { state.online = false; render(); });
