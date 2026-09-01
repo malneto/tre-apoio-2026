@@ -215,6 +215,8 @@ var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
 // pré-cadastradas no banco (provisórias, sem numeração real ainda).
 var FUNCOES_TRE = ['TRE', 'Operador', 'Administrador', 'Presidente', '1º Mesário', '2º Mesário', 'Secretário', 'Suplente'];
 var FUNCOES_MESA = ['Presidente', '1º Mesário', '2º Mesário', 'Secretário', 'Suplente'];
+// Detalhe opcional dentro de uma função — hoje só Administrador tem.
+var SUBFUNCOES = { 'Administrador': ['Acessibilidade', 'Responsável Financeiro'] };
 function localTipoDaFuncao(funcao) {
   if (funcao === 'Operador') return 'operadores';
   if (funcao === 'Administrador') return 'escola';
@@ -392,9 +394,10 @@ var state = {
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
   listaEspera: [], listaEsperaEnviando: null,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
+  perfilFormChavePix: '', perfilChavePixSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
-  newEscola: '', newSecao: '',
-  editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '',
+  newEscola: '', newSecao: '', newSubfuncao: '',
+  editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '', editSubfuncao: '',
   showImportForm: false, importEnviando: false, importResultado: null,
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
@@ -429,7 +432,7 @@ async function boot() {
 
 async function onSignedIn(session) {
   state.session = session;
-  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
+  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, subfuncao, chave_pix, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
   if (error || !perfil) {
     state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
     await sb.auth.signOut();
@@ -437,6 +440,7 @@ async function onSignedIn(session) {
   }
   state.perfil = perfil;
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
+  state.perfilFormChavePix = perfil.chave_pix || '';
   state.screen = 'mural';
   await Promise.all([loadMural(), loadMyGroups()]);
   render();
@@ -846,7 +850,7 @@ async function salvarConfigGeralIntervalo() {
   render();
 }
 async function loadPainelMembers() {
-  var q = sb.from('memberships').select('perfil_id, grupo_id, perfis!inner(id, nome_completo, funcao, email_verificado, ativo), grupos(nome, slug, tipo, escola_id)').eq('perfis.ativo', true);
+  var q = sb.from('memberships').select('perfil_id, grupo_id, perfis!inner(id, nome_completo, funcao, subfuncao, chave_pix, email_verificado, ativo), grupos(nome, slug, tipo, escola_id)').eq('perfis.ativo', true);
   if (state.painelFilter !== 'todos') {
     var g = state.allGroups.find(function (x) { return x.slug === state.painelFilter; });
     if (g) q = q.eq('grupo_id', g.id);
@@ -864,7 +868,7 @@ function agruparPorPessoa(linhas) {
     if (!m.perfis) return;
     var id = m.perfil_id;
     if (!porPessoa[id]) {
-      porPessoa[id] = { id: id, nome_completo: m.perfis.nome_completo, funcao: m.perfis.funcao, email_verificado: m.perfis.email_verificado, gruposPrimarios: [] };
+      porPessoa[id] = { id: id, nome_completo: m.perfis.nome_completo, funcao: m.perfis.funcao, subfuncao: m.perfis.subfuncao, chave_pix: m.perfis.chave_pix, email_verificado: m.perfis.email_verificado, gruposPrimarios: [] };
       ordem.push(id);
     }
     var g = m.grupos;
@@ -950,7 +954,7 @@ async function adicionarIntegrante() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
       body: JSON.stringify({
-        email: email, nome_completo: nome, funcao: funcao,
+        email: email, nome_completo: nome, funcao: funcao, subfuncao: state.newSubfuncao,
         cpf: state.newCpf, titulo: state.newTitulo, data_nascimento: state.newNascimento,
         local_tipo: localTipoDaFuncao(funcao), escola: state.newEscola, secao: state.newSecao
       })
@@ -958,7 +962,7 @@ async function adicionarIntegrante() {
     var json = await resp.json();
     if (!resp.ok) { state.banner = 'Não foi possível adicionar: ' + (json.error || resp.status); render(); return; }
   } catch (e) { state.banner = 'Não foi possível contatar o servidor de convite.'; render(); return; }
-  state.showAddForm = false; state.newEmail = ''; state.newName = ''; state.newFuncao = '';
+  state.showAddForm = false; state.newEmail = ''; state.newName = ''; state.newFuncao = ''; state.newSubfuncao = '';
   state.newCpf = ''; state.newTitulo = ''; state.newNascimento = ''; state.newEscola = ''; state.newSecao = '';
   await loadPainelMembers();
 }
@@ -970,6 +974,7 @@ function abrirEditarConvocado(perfilId) {
   state.editingConvocadoId = perfilId;
   state.editNome = pessoa.nome_completo || '';
   state.editFuncao = FUNCOES_TRE.indexOf(pessoa.funcao) !== -1 ? pessoa.funcao : '';
+  state.editSubfuncao = pessoa.subfuncao || '';
   state.editEscola = local.escola; state.editSecao = local.secao;
   render();
 }
@@ -989,7 +994,7 @@ async function salvarEditarConvocado() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
       body: JSON.stringify({
-        perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao,
+        perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao, subfuncao: state.editSubfuncao,
         local_tipo: localTipoDaFuncao(state.editFuncao), escola: state.editEscola, secao: state.editSecao
       })
     });
@@ -1023,7 +1028,7 @@ function parseImportacao(texto) {
     var json = JSON.parse(texto);
     var arr = Array.isArray(json) ? json : [json];
     return arr.map(function (l) {
-      return { email: l.email, nome_completo: l.nome_completo, funcao: l.funcao || '', cpf: l.cpf, titulo: l.titulo, data_nascimento: l.data_nascimento, local_tipo: l.local || l.local_tipo, escola: l.escola || '', secao: l.secao || '' };
+      return { email: l.email, nome_completo: l.nome_completo, funcao: l.funcao || '', subfuncao: l.subfuncao || '', cpf: l.cpf, titulo: l.titulo, data_nascimento: l.data_nascimento, local_tipo: localTipoDaFuncao(l.funcao || ''), escola: l.escola || '', secao: l.secao || '' };
     });
   }
   var linhas = texto.split(/\r?\n/).filter(function (l) { return l.trim(); });
@@ -1034,7 +1039,7 @@ function parseImportacao(texto) {
     var campos = parseCsvLinha(linha, sep);
     var obj = {};
     cabecalho.forEach(function (nomeCol, i) { obj[nomeCol] = campos[i] || ''; });
-    return { email: obj.email, nome_completo: obj.nome_completo, funcao: obj.funcao || '', cpf: obj.cpf, titulo: obj.titulo, data_nascimento: obj.data_nascimento, local_tipo: obj.local || obj.local_tipo, escola: obj.escola || '', secao: obj.secao || '' };
+    return { email: obj.email, nome_completo: obj.nome_completo, funcao: obj.funcao || '', subfuncao: obj.subfuncao || '', cpf: obj.cpf, titulo: obj.titulo, data_nascimento: obj.data_nascimento, local_tipo: localTipoDaFuncao(obj.funcao || ''), escola: obj.escola || '', secao: obj.secao || '' };
   });
 }
 async function processarArquivoImport(file) {
@@ -1520,6 +1525,14 @@ async function salvarNomeExibicao() {
   state.perfilNomeSalvo = true;
   render();
 }
+async function salvarChavePix() {
+  var valor = state.perfilFormChavePix.trim() || null;
+  var { error } = await sb.from('perfis').update({ chave_pix: valor }).eq('id', state.session.user.id);
+  if (error) { state.banner = error.message; render(); return; }
+  state.perfil.chave_pix = valor;
+  state.perfilChavePixSalvo = true;
+  render();
+}
 
 function renderPerfil() {
   var p = state.perfil;
@@ -1552,6 +1565,11 @@ function renderPerfil() {
     '<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" value="' + esc(state.perfilFormNomeExibicao) + '">' +
     (state.perfilNomeSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-nome-exibicao">Salvar</button></div></div>';
+  html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Chave PIX</div>' +
+    '<div class="hint" style="margin:0 2px 8px;">Opcional — facilita o Cartório fazer sua transferência (ajuda de custo, reembolso etc.).</div>' +
+    '<input type="text" id="chave-pix-input" placeholder="CPF, e-mail, telefone ou chave aleatória" value="' + esc(state.perfilFormChavePix) + '">' +
+    (state.perfilChavePixSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
+    '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-chave-pix">Salvar</button></div></div>';
   html += '<div class="hint">Sessão autenticada por link enviado ao seu e-mail cadastrado no TRE-PE. Toque no ícone no topo para sair.</div>';
   return html;
 }
@@ -1598,7 +1616,7 @@ function renderPainel() {
     var enviandoEmail = state.listaEsperaEnviando === m.id + ':email';
     var enviandoWpp = state.listaEsperaEnviando === m.id + ':whatsapp';
     html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.nome_completo) + '</div>' +
-      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.nome_completo) + '</div><div class="member-role">' + esc(m.funcao || '') + ' · ' + esc(localTexto(m)) + (m.email_verificado ? '' : ' · sem código confirmado') + '</div></div>';
+      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.nome_completo) + '</div><div class="member-role">' + esc(m.funcao || '') + esc(m.subfuncao ? ' (' + m.subfuncao + ')' : '') + ' · ' + esc(localTexto(m)) + (m.email_verificado ? '' : ' · sem código confirmado') + (m.chave_pix ? ' · PIX: ' + esc(m.chave_pix) : '') + '</div></div>';
     if (!m.email_verificado) {
       html += '<button class="icon-btn" title="Enviar código por e-mail" style="margin-right:6px;" data-action="reenviar-espera-email" data-id="' + m.id + '" ' + (enviandoEmail ? 'disabled' : '') + '>' + icon('mail', 14) + '</button>' +
         '<button class="icon-btn" title="Enviar código por WhatsApp" style="margin-right:6px;" data-action="reenviar-espera-whatsapp" data-id="' + m.id + '" ' + (enviandoWpp ? 'disabled' : '') + '>' + icon('whatsapp', 14, '#3E6E4E') + '</button>';
@@ -1611,6 +1629,7 @@ function renderPainel() {
       '<input type="email" id="new-email-input" placeholder="E-mail já cadastrado no TRE" value="' + esc(state.newEmail) + '">' +
       '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
       renderFuncaoCampo('new', state.newFuncao) +
+      renderSubfuncaoCampo('new', state.newFuncao, state.newSubfuncao) +
       '<input type="text" inputmode="numeric" id="new-cpf-input" placeholder="CPF" value="' + esc(state.newCpf) + '">' +
       '<input type="text" inputmode="numeric" id="new-titulo-input" placeholder="Título de eleitor" value="' + esc(state.newTitulo) + '">' +
       '<input type="text" id="new-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.newNascimento) + '">' +
@@ -1627,6 +1646,14 @@ function renderFuncaoCampo(prefix, funcaoVal) {
   return '<select id="' + prefix + '-funcao-select">' +
     '<option value=""' + (!funcaoVal ? ' selected' : '') + ' disabled>Selecione a função…</option>' +
     FUNCOES_TRE.map(function (f) { return '<option value="' + esc(f) + '"' + (funcaoVal === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
+    '</select>';
+}
+function renderSubfuncaoCampo(prefix, funcaoVal, subfuncaoVal) {
+  var opcoes = SUBFUNCOES[funcaoVal];
+  if (!opcoes) return '';
+  return '<select id="' + prefix + '-subfuncao-select">' +
+    '<option value=""' + (!subfuncaoVal ? ' selected' : '') + '>Nenhuma (genérico)</option>' +
+    opcoes.map(function (s) { return '<option value="' + esc(s) + '"' + (subfuncaoVal === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') +
     '</select>';
 }
 
@@ -1671,6 +1698,7 @@ function renderEditarConvocadoForm(m) {
   return '<div class="add-form"><div class="add-form-title">Editar ' + esc(m.nome_completo) + '</div>' +
     '<input type="text" id="edit-nome-input" placeholder="Nome completo" value="' + esc(state.editNome) + '">' +
     renderFuncaoCampo('edit', state.editFuncao) +
+    renderSubfuncaoCampo('edit', state.editFuncao, state.editSubfuncao) +
     renderLocalCampos('edit', state.editFuncao, state.editEscola, state.editSecao) +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-editar-convocado">Salvar</button><button class="btn-secondary" data-action="cancelar-editar-convocado">Cancelar</button></div>' +
     '</div>';
@@ -1683,8 +1711,10 @@ function renderImportBlock() {
     html += '</div>';
     return html;
   }
-  html += '<div class="hint" style="margin:0 2px 10px;">Colunas do CSV (com cabeçalho): <code>email,nome_completo,funcao,cpf,titulo,data_nascimento,local,escola,secao</code>. ' +
-    '<code>local</code> é <code>tre</code>, <code>operadores</code>, <code>escola</code> ou <code>secao</code>; <code>escola</code>/<code>secao</code> só quando aplicável. Escolas e seções que ainda não existem são criadas automaticamente. JSON no mesmo formato (array de objetos) também funciona.</div>' +
+  html += '<div class="hint" style="margin:0 2px 10px;">Colunas do CSV (com cabeçalho): <code>email,nome_completo,funcao,subfuncao,cpf,titulo,data_nascimento,escola,secao</code>. ' +
+    '<code>funcao</code> é uma destas: ' + FUNCOES_TRE.map(function (f) { return '<code>' + esc(f) + '</code>'; }).join(', ') + '. ' +
+    '<code>subfuncao</code> só se a função for Administrador (' + SUBFUNCOES['Administrador'].map(function (s) { return '<code>' + esc(s) + '</code>'; }).join(' ou ') + ', opcional). ' +
+    '<code>escola</code>/<code>secao</code> só quando a função exigir (escola = nome oficial da planilha; seção = número, se já souber). Escolas e seções que ainda não existem são criadas automaticamente. JSON no mesmo formato (array de objetos) também funciona.</div>' +
     '<input type="file" id="import-file-input" accept=".csv,.json,text/csv,application/json" ' + (state.importEnviando ? 'disabled' : '') + '>' +
     (state.importEnviando ? '<div class="hint" style="margin-top:8px;">Importando…</div>' : '');
   if (state.importResultado) {
@@ -1769,6 +1799,7 @@ document.addEventListener('click', function (e) {
   }
   else if (action === 'open-painel') go('painel');
   else if (action === 'salvar-nome-exibicao') salvarNomeExibicao();
+  else if (action === 'salvar-chave-pix') salvarChavePix();
   else if (action === 'confirmar-verificacao') confirmarVerificacaoEmail();
   else if (action === 'reenviar-verificacao') pedirNovoCodigoVerificacao();
   else if (action === 'send-message') sendMessage();
@@ -1850,6 +1881,7 @@ document.addEventListener('input', function (e) {
   else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
+  else if (id === 'chave-pix-input') { state.perfilFormChavePix = e.target.value; state.perfilChavePixSalvo = false; }
   else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
   else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
 });
@@ -1860,8 +1892,10 @@ document.addEventListener('keydown', function (e) {
   else if (e.target.id === 'verif-codigo-input') confirmarVerificacaoEmail();
 });
 document.addEventListener('change', function (e) {
-  if (e.target.id === 'new-funcao-select') { state.newFuncao = e.target.value; state.newEscola = ''; state.newSecao = ''; render(); }
-  else if (e.target.id === 'edit-funcao-select') { state.editFuncao = e.target.value; state.editEscola = ''; state.editSecao = ''; render(); }
+  if (e.target.id === 'new-funcao-select') { state.newFuncao = e.target.value; state.newSubfuncao = ''; state.newEscola = ''; state.newSecao = ''; render(); }
+  else if (e.target.id === 'edit-funcao-select') { state.editFuncao = e.target.value; state.editSubfuncao = ''; state.editEscola = ''; state.editSecao = ''; render(); }
+  else if (e.target.id === 'new-subfuncao-select') state.newSubfuncao = e.target.value;
+  else if (e.target.id === 'edit-subfuncao-select') state.editSubfuncao = e.target.value;
   else if (e.target.id === 'new-escola-select') { state.newEscola = e.target.value; state.newSecao = ''; render(); }
   else if (e.target.id === 'edit-escola-select') { state.editEscola = e.target.value; state.editSecao = ''; render(); }
   else if (e.target.id === 'new-secao-select') state.newSecao = e.target.value;
