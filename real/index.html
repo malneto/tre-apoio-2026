@@ -287,7 +287,7 @@ var state = {
   session: null, perfil: null,
   myGroups: [], expandedEscolaId: null,
   activeGroupId: null, activeGroupMeta: null,
-  threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false,
+  threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false, threadMembersExpanded: false,
   minhasConfirmacoesMensagens: [], showInformeForm: false, informeFormTexto: '', informeFormExigeConfirmacao: false,
   muralPosts: [], reviewQueue: [],
   showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
@@ -438,6 +438,7 @@ function subscribeMural() {
 }
 
 async function loadThread(grupo) {
+  if (state.activeGroupId !== grupo.id) state.threadMembersExpanded = false;
   state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
   state.screen = 'thread'; state.threadMessages = []; state.threadMembers = []; state.composeError = '';
   render();
@@ -975,14 +976,22 @@ function renderGrupos() {
 function renderThread() {
   var html = '';
   if (state.threadMembers.length) {
-    html += '<div class="members-box"><div class="eyebrow" style="margin-bottom:8px;">Integrantes (' + state.threadMembers.length + ')</div>';
-    state.threadMembers.forEach(function (m, i) {
-      var canRemove = state.perfil.is_moderador && m.perfilId !== state.session.user.id;
-      html += '<div class="member-row"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
-        '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role || '') + '</div></div>' +
-        (canRemove ? '<button class="remove-btn" data-action="remove-member" data-id="' + m.perfilId + '" data-grupo="' + state.activeGroupId + '">' + icon('x', 13) + '</button>' : '') +
-        '</div>';
-    });
+    html += '<div class="members-box">' +
+      '<button class="link-btn" style="margin:0; width:100%; justify-content:space-between;" data-action="toggle-membros-thread">' +
+      '<span class="eyebrow" style="margin:0;">Integrantes (' + state.threadMembers.length + ')</span>' +
+      '<span style="display:flex; transform:' + (state.threadMembersExpanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 14, '#8A8271') + '</span>' +
+      '</button>';
+    if (state.threadMembersExpanded) {
+      html += '<div style="margin-top:8px;">';
+      state.threadMembers.forEach(function (m, i) {
+        var canRemove = state.perfil.is_moderador && m.perfilId !== state.session.user.id;
+        html += '<div class="member-row"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
+          '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role || '') + '</div></div>' +
+          (canRemove ? '<button class="remove-btn" data-action="remove-member" data-id="' + m.perfilId + '" data-grupo="' + state.activeGroupId + '">' + icon('x', 13) + '</button>' : '') +
+          '</div>';
+      });
+      html += '</div>';
+    }
     html += '</div>';
   }
   var prevAuthor = null;
@@ -1354,6 +1363,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'adicionar-passo') adicionarPasso();
   else if (action === 'remover-passo') removerPasso(parseInt(el.getAttribute('data-idx'), 10));
   else if (action === 'toggle-mural-expand') toggleMuralExpand(el.getAttribute('data-id'));
+  else if (action === 'toggle-membros-thread') { state.threadMembersExpanded = !state.threadMembersExpanded; render(); }
   else if (action === 'painel-filter') { state.painelFilter = el.getAttribute('data-filter'); loadPainelMembers(); }
   else if (action === 'salvar-config-geral') salvarConfigGeralIntervalo();
   else if (action === 'abrir-add') { state.showAddForm = true; render(); }
