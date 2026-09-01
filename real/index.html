@@ -99,6 +99,7 @@
   .profile-name { font-size: 16px; font-weight: 700; color: var(--navy); }
   .profile-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
   .profile-badge { display: inline-block; margin-top: 10px; padding: 4px 10px; background: #F1ECE0; border-radius: 20px; font-size: 11.5px; font-weight: 600; color: var(--navy); }
+  .audience-badge { display: inline-block; margin-top: 10px; padding: 4px 12px; background: var(--navy); border: 1px solid var(--navy); border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: #F7F5F0; }
   .info-list { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px 14px; margin-bottom: 14px; }
   .info-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--divider); }
   .info-row:last-child { border-bottom: none; }
@@ -793,7 +794,7 @@ function renderMural() {
     state.reviewQueue.forEach(function (p) {
       var podeAprovar = state.perfil.is_revisor;
       html += '<div class="review-item"><div class="post-author">' + esc(p._autorNome) + '</div><div style="font-size:13px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(p.titulo) + '</div>' +
-        '<div class="profile-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(p.visibilidade)) + (p.exige_confirmacao ? ' · exige confirmação' : '') + '</div>' +
+        '<div class="audience-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(p.visibilidade)) + (p.exige_confirmacao ? ' · exige confirmação' : '') + '</div>' +
         (p.texto ? '<div class="post-text">' + esc(p.texto) + '</div>' : '');
       if (p.passos && p.passos.length) {
         if (p.passos_titulo) html += '<div class="faq-cat-tag" style="margin-top:8px;">' + esc(p.passos_titulo) + '</div>';
@@ -861,7 +862,7 @@ function renderMural() {
     html += '</div><span class="post-time">' + esc(fmtHora(post.criado_em)) + '</span></div>' +
       '<div class="post-author">Cartório Eleitoral · 4ª Zona</div>' +
       '<div style="font-size:13.5px; font-weight:700; color:#16294B; margin-bottom:4px;">' + esc(post.titulo) + '</div>' +
-      '<div class="profile-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(post.visibilidade)) + '</div>' +
+      '<div class="audience-badge" style="margin-top:0; margin-bottom:8px;">' + esc(rotuloVisibilidade(post.visibilidade)) + '</div>' +
       (post.texto ? '<div class="post-text">' + esc(post.texto) + '</div>' : '');
     html += renderPassosBloco(post);
     if (post.exige_confirmacao) {
