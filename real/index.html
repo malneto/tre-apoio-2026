@@ -159,6 +159,8 @@
   .login-form input { padding: 11px 13px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; outline: none; }
   .login-btn { background: var(--navy); color: #fff; border: none; border-radius: 8px; padding: 11px; font-size: 13.5px; font-weight: 600; }
   .login-btn:disabled { opacity: .5; }
+  .consent-row { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; line-height: 1.4; color: var(--muted); text-align: left; }
+  .consent-row input { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; }
   .login-msg { font-size: 12px; margin-top: 10px; line-height: 1.5; }
   .login-msg.error { color: #A24B3E; }
   .login-msg.ok { color: #3E6E4E; }
@@ -270,6 +272,8 @@ function initials(name) {
   return (a + b).toUpperCase();
 }
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function primeiroNome(nomeCompleto) { return (nomeCompleto || '').trim().split(/\s+/)[0] || nomeCompleto || ''; }
+function nomeExibir(perfil) { return (perfil && perfil.nome_exibicao && perfil.nome_exibicao.trim()) || primeiroNome(perfil ? perfil.nome_completo : ''); }
 
 // ---------- máscaras dos campos de identidade (login) ----------
 // Só letras (com acento) e espaço — nunca número/símbolo, nome não tem isso.
@@ -321,9 +325,10 @@ var state = {
   editingMuralId: null, historicoMural: {}, expandedHistoricoId: null,
   faqSearch: '', activeFaqCat: null, expandedFaqId: null,
   painelFilter: 'todos', allGroups: [], painelMembers: [],
+  perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
   loginStep: 'identidade', loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '',
-  loginCodigo: '', loginEmailMascarado: '', loginEmailReal: '', loginStatus: '', loginSending: false,
+  loginCodigo: '', loginEmailMascarado: '', loginEmailReal: '', loginStatus: '', loginSending: false, loginAceite: false,
   online: navigator.onLine,
   banner: ''
 };
@@ -362,6 +367,7 @@ async function onSignedIn(session) {
     return;
   }
   state.perfil = perfil;
+  state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
   state.screen = 'mural';
   await Promise.all([loadMural(), loadMyGroups()]);
   render();
@@ -370,11 +376,12 @@ async function onSignedIn(session) {
 async function solicitarCodigo() {
   var cpf = state.loginCpf.trim(), titulo = state.loginTitulo.trim(), nome = state.loginNome.trim(), nascimento = state.loginNascimento.trim();
   if (!cpf || !titulo || !nome || !nascimento) { state.loginStatus = 'error:Preencha CPF, título, nome completo e data de nascimento.'; render(); return; }
+  if (!state.loginAceite) { state.loginStatus = 'error:Marque o aceite do uso dos dados pra continuar.'; render(); return; }
   state.loginSending = true; state.loginStatus = ''; render();
   try {
     var resp = await fetch(SUPABASE_URL + '/functions/v1/solicitar-acesso', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, redirect_to: window.location.origin + window.location.pathname })
+      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, consentimento: true, redirect_to: window.location.origin + window.location.pathname })
     });
     var json = await resp.json();
     state.loginSending = false;
@@ -480,7 +487,7 @@ async function loadThread(grupo) {
   var autorIds = Array.from(new Set(msgs.map(function (m) { return m.autor_id; })));
   var autorMap = {};
   if (autorIds.length) {
-    var { data: autores } = await sb.from('perfis').select('id, nome_completo, is_moderador').in('id', autorIds);
+    var { data: autores } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, is_moderador').in('id', autorIds);
     (autores || []).forEach(function (a) { autorMap[a.id] = a; });
   }
   msgs.forEach(function (m) { m._autor = autorMap[m.autor_id] || { nome_completo: 'Integrante' }; });
@@ -732,7 +739,9 @@ function renderLogin() {
     '<input type="text" inputmode="numeric" id="login-cpf-input" placeholder="CPF" value="' + esc(state.loginCpf) + '">' +
     '<input type="text" inputmode="numeric" id="login-titulo-input" placeholder="Título de eleitor" value="' + esc(state.loginTitulo) + '">' +
     '<input type="text" id="login-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.loginNascimento) + '">' +
-    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Enviar código de acesso') + '</button>' +
+    '<label class="consent-row"><input type="checkbox" id="login-aceite-checkbox"' + (state.loginAceite ? ' checked' : '') + '>' +
+    '<span>Li e aceito que meus dados (nome, CPF, título de eleitor, data de nascimento e e-mail) sejam usados para confirmar minha identidade e liberar meu acesso a este aplicativo experimental de comunicação da 4ª Zona Eleitoral, até sua desativação e a exclusão dos meus dados pessoais (prevista para até 15 dias após o fim do pleito).</span></label>' +
+    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Enviar código de acesso') + '</button>' +
     '</div>' + statusHtml + '</div>';
 }
 
@@ -925,7 +934,7 @@ function renderThread() {
   }
   var prevAuthor = null;
   state.threadMessages.forEach(function (m) {
-    var authorName = m._autor.nome_completo + (m._autor.id === state.session.user.id ? ' (você)' : '');
+    var authorName = nomeExibir(m._autor) + (m._autor.id === state.session.user.id ? ' (você)' : '');
     var sameAsPrev = m.autor_id === prevAuthor;
     var authorColor = m._autor.is_moderador ? '#C79A3D' : '#16294B';
     html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + '">';
@@ -1008,6 +1017,15 @@ function renderFaqItem(item) {
   html += '</div>'; return html;
 }
 
+async function salvarNomeExibicao() {
+  var valor = state.perfilFormNomeExibicao.trim() || null;
+  var { error } = await sb.from('perfis').update({ nome_exibicao: valor }).eq('id', state.session.user.id);
+  if (error) { state.banner = error.message; render(); return; }
+  state.perfil.nome_exibicao = valor;
+  state.perfilNomeSalvo = true;
+  render();
+}
+
 function renderPerfil() {
   var p = state.perfil;
   var badges = [];
@@ -1022,6 +1040,11 @@ function renderPerfil() {
   if (p.is_moderador) {
     html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
   }
+  html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Nome de exibição</div>' +
+    '<div class="hint" style="margin:0 2px 8px;">É o nome que aparece do lado das suas mensagens nos grupos. Se deixar em branco, usamos só seu primeiro nome (' + esc(primeiroNome(p.nome_completo)) + ').</div>' +
+    '<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" value="' + esc(state.perfilFormNomeExibicao) + '">' +
+    (state.perfilNomeSalvo ? '<div class="hint" style="color:#3E6E4E; margin-top:6px;">' + icon('chev', 12, '#3E6E4E') + ' Salvo</div>' : '') +
+    '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-nome-exibicao">Salvar</button></div></div>';
   html += '<div class="hint">Sessão autenticada por link enviado ao seu e-mail cadastrado no TRE-PE. Toque no ícone no topo para sair.</div>';
   return html;
 }
@@ -1127,6 +1150,7 @@ document.addEventListener('click', function (e) {
     if (g) loadThread(g);
   }
   else if (action === 'open-painel') go('painel');
+  else if (action === 'salvar-nome-exibicao') salvarNomeExibicao();
   else if (action === 'send-message') sendMessage();
   else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
   else if (action === 'remove-member' || action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
@@ -1177,6 +1201,7 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-email-input') state.newEmail = e.target.value;
   else if (id === 'new-name-input') state.newName = e.target.value;
   else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
+  else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
 });
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
@@ -1184,7 +1209,10 @@ document.addEventListener('keydown', function (e) {
   else if (e.target.id === 'login-nascimento-input') solicitarCodigo();
   else if (e.target.id === 'login-codigo-input') confirmarCodigo();
 });
-document.addEventListener('change', function (e) { if (e.target.id === 'new-group-select') state.newGroup = e.target.value; });
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'new-group-select') state.newGroup = e.target.value;
+  else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
+});
 window.addEventListener('online', function () { state.online = true; render(); });
 window.addEventListener('offline', function () { state.online = false; render(); });
 
