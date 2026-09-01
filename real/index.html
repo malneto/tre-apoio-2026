@@ -306,7 +306,7 @@ var state = {
   session: null, perfil: null,
   myGroups: [],
   activeGroupId: null, activeGroupMeta: null,
-  threadMembers: [], threadMessages: [], composeText: '', composeError: '',
+  threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false,
   muralPosts: [], reviewQueue: [],
   showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
   muralFormComTopicos: false, muralFormTopicosTitulo: '',
@@ -413,6 +413,15 @@ async function logout() { await sb.auth.signOut(); state.loginStep = 'identidade
 
 // ================= DADOS =================
 async function loadMyGroups() {
+  if (state.perfil.is_moderador) {
+    // moderador (Rita/Fernanda/desenvolvedor) enxerga todos os grupos pra
+    // acompanhar tudo, mesmo sem ser membro formal de cada um — condiz com
+    // a RLS de mensagens, que já libera leitura irrestrita pra moderador.
+    var { data: todos, error: todosErr } = await sb.from('grupos').select('id,slug,nome,descricao,tipo').order('nome');
+    if (todosErr) { state.banner = todosErr.message; return; }
+    state.myGroups = todos || [];
+    return;
+  }
   var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo)').eq('perfil_id', state.session.user.id);
   if (error) { state.banner = error.message; return; }
   state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean);
@@ -459,7 +468,7 @@ async function loadThread(grupo) {
   render();
   var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
   var membersPromise = state.perfil.is_moderador
-    ? sb.from('memberships').select('perfil_id, papel, perfis(nome_completo, funcao)').eq('grupo_id', grupo.id)
+    ? sb.from('memberships').select('perfil_id, papel, pode_postar, perfis(nome_completo, funcao)').eq('grupo_id', grupo.id)
     : Promise.resolve({ data: [] });
   var [msgsRes, membersRes] = await Promise.all([msgsPromise, membersPromise]);
   var msgs = msgsRes.data || [];
@@ -474,6 +483,8 @@ async function loadThread(grupo) {
   state.threadMembers = (membersRes.data || []).map(function (row) {
     return { perfilId: row.perfil_id, name: row.perfis ? row.perfis.nome_completo : '—', role: row.perfis ? row.perfis.funcao : row.papel };
   });
+  var minhaMembership = (membersRes.data || []).filter(function (row) { return row.perfil_id === state.session.user.id; })[0];
+  state.souMembroComPostagem = !!(minhaMembership && minhaMembership.pode_postar);
   render();
   subscribeThread(grupo.id);
 }
@@ -890,14 +901,21 @@ function renderThread() {
   return html;
 }
 
-function canPostHint() { return state.activeGroupMeta && (state.perfil.is_moderador || state.activeGroupMeta.slug !== 'geral'); }
+function canPostHint() {
+  if (!state.activeGroupMeta) return false;
+  if (state.activeGroupMeta.slug === 'geral') return state.perfil.is_moderador;
+  if (state.perfil.is_moderador) return state.souMembroComPostagem;
+  return true;
+}
 
 function renderThreadComposer() {
   var html = '<div class="composer">';
   if (!state.online) {
     html += '<div class="composer-blocked">Sem conexão — a mensagem será enviada ao reconectar.</div>';
   } else if (!canPostHint()) {
-    html += '<div class="composer-blocked">O Geral é o canal oficial do Cartório — só o TRE publica aqui.</div>';
+    html += '<div class="composer-blocked">' + (state.activeGroupMeta.slug === 'geral'
+      ? 'O Geral é o canal oficial do Cartório — só o TRE publica aqui.'
+      : 'Você está vendo este grupo como moderador, mas não é integrante dele — só acompanha, não posta aqui.') + '</div>';
   } else {
     html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '">' +
       '<button class="send-btn" data-action="send-message">' + icon('send', 16, '#F7F5F0') + '</button></div>';
