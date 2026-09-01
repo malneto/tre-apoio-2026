@@ -749,7 +749,7 @@ function renderLogin() {
     return renderHeader() + '<div class="center-screen">' + bannerHtml +
       '<div class="login-mark">' + markSvg() + '</div>' +
       '<div class="login-title">Digite o código</div>' +
-      '<div class="login-sub">Se os dados baterem com um cadastro, mandamos um código de 6 dígitos pro e-mail já cadastrado na sua convocação. Ele vale por 30 minutos.</div>' +
+      '<div class="login-sub">Se os dados baterem com um cadastro, mandamos um código de 6 dígitos pro e-mail já cadastrado na sua convocação. <strong>Pode levar alguns minutos pra chegar</strong> — não é erro, é normal, aguarde. Se demorar demais, confira também a caixa de spam/lixo eletrônico. Vale por 30 minutos.</div>' +
       '<div class="login-form">' +
       '<input type="text" inputmode="numeric" maxlength="6" id="login-codigo-input" placeholder="000000" style="text-align:center; font-size:20px; letter-spacing:6px;" value="' + esc(state.loginCodigo) + '">' +
       '<button class="login-btn" data-action="confirmar-codigo" ' + (state.loginSending ? 'disabled' : '') + '>' + (state.loginSending ? 'Confirmando…' : 'Confirmar código') + '</button>' +
