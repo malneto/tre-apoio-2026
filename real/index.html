@@ -438,12 +438,14 @@ async function attachAutores(posts) {
 }
 
 async function loadMural() {
-  var { data } = await sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
-  state.muralPosts = data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
-  if (state.perfil.is_moderador || state.perfil.is_revisor) {
-    var { data: pend } = await sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true });
-    state.reviewQueue = await attachAutores(pend || []);
-  } else { state.reviewQueue = []; }
+  var vejoPendentes = state.perfil.is_moderador || state.perfil.is_revisor;
+  var publicadosPromise = sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
+  var pendentesPromise = vejoPendentes
+    ? sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true })
+    : Promise.resolve({ data: [] });
+  var resultados = await Promise.all([publicadosPromise, pendentesPromise]);
+  state.muralPosts = resultados[0].data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
+  state.reviewQueue = vejoPendentes ? await attachAutores(resultados[1].data || []) : [];
   var idsQueExigem = state.muralPosts.filter(function (p) { return p.exige_confirmacao; }).map(function (p) { return p.id; });
   if (idsQueExigem.length) {
     var { data: conf } = await sb.from('mural_confirmacoes').select('mural_post_id').eq('perfil_id', state.session.user.id).in('mural_post_id', idsQueExigem);
