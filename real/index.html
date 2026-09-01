@@ -330,8 +330,8 @@ var state = {
   painelFilter: 'todos', allGroups: [], painelMembers: [],
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
-  loginStep: 'identidade', loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '',
-  loginCodigo: '', loginEmailMascarado: '', loginEmailReal: '', loginStatus: '', loginSending: false, loginAceite: false,
+  loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
+  verifCodigo: '', verifStatus: '', verifSending: false,
   online: navigator.onLine,
   banner: ''
 };
@@ -363,7 +363,7 @@ async function boot() {
 
 async function onSignedIn(session) {
   state.session = session;
-  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, is_moderador, is_revisor, ativo, criado_em, consentimento_em').eq('id', session.user.id).single();
+  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
   if (error || !perfil) {
     state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
     await sb.auth.signOut();
@@ -384,47 +384,33 @@ async function solicitarCodigo() {
   try {
     var resp = await fetch(SUPABASE_URL + '/functions/v1/solicitar-acesso', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, consentimento: true, redirect_to: window.location.origin + window.location.pathname })
+      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, consentimento: true })
     });
     var json = await resp.json();
+    if (!resp.ok) {
+      state.loginSending = false;
+      state.loginStatus = 'error:' + (json.error || 'Não foi possível verificar seus dados agora. Tente de novo em instantes.');
+      render();
+      return;
+    }
+    if (!json.hashed_token) {
+      // resposta genérica (não bateu) — não revela se o cadastro existe ou não
+      state.loginSending = false;
+      state.loginStatus = 'ok:' + json.mensagem;
+      render();
+      return;
+    }
+    // bateu: login de leitura instantâneo, sem esperar e-mail nenhum
+    var { error } = await sb.auth.verifyOtp({ token_hash: json.hashed_token, type: 'magiclink' });
     state.loginSending = false;
-    if (!resp.ok) { state.loginStatus = 'error:Não foi possível verificar seus dados agora. Tente de novo em instantes.'; render(); return; }
-    state.loginEmailReal = json.email || '';
-    state.loginEmailMascarado = json.email_mascarado || '';
-    state.loginStep = 'codigo';
-    state.loginStatus = '';
-    render();
+    if (error) { state.loginStatus = 'error:Não foi possível liberar o acesso agora. Tente de novo.'; render(); return; }
+    // sucesso: onAuthStateChange (SIGNED_IN) cuida da navegação pro app
   } catch (e) {
     state.loginSending = false; state.loginStatus = 'error:Sem conexão com o servidor. Tente novamente.'; render();
   }
 }
 
-async function confirmarCodigo() {
-  var codigo = state.loginCodigo.trim();
-  if (!codigo) return;
-  if (!state.loginEmailReal) { state.loginStatus = 'error:Código inválido ou expirado. Volte e confira seus dados.'; render(); return; }
-  state.loginSending = true; state.loginStatus = ''; render();
-  var { error } = await sb.auth.verifyOtp({ email: state.loginEmailReal, token: codigo, type: 'email' });
-  state.loginSending = false;
-  if (error) { state.loginStatus = 'error:Código inválido ou expirado. Peça um novo.'; render(); return; }
-  // sucesso: onAuthStateChange (SIGNED_IN) cuida da navegação pro app
-}
-
-async function verificarSessao() {
-  state.loginSending = true; state.loginStatus = ''; render();
-  var { data } = await sb.auth.getSession();
-  state.loginSending = false;
-  if (data.session) return; // onAuthStateChange cuida do resto
-  state.loginStatus = 'error:Ainda não. Se já clicou no link, aguarde alguns segundos e tente de novo — ou volte e peça um novo link.';
-  render();
-}
-
-function voltarParaIdentidade() {
-  state.loginStep = 'identidade'; state.loginCodigo = ''; state.loginEmailReal = ''; state.loginEmailMascarado = ''; state.loginStatus = '';
-  render();
-}
-
-async function logout() { await sb.auth.signOut(); state.loginStep = 'identidade'; state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginCodigo = ''; }
+async function logout() { await sb.auth.signOut(); state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false; }
 
 // ================= DADOS =================
 async function loadMyGroups() {
@@ -521,9 +507,22 @@ function leaveThread() {
   state.activeGroupId = null; state.activeGroupMeta = null;
 }
 
+// Leitura é liberada na hora só com a identidade; postar (mensagem, mural,
+// confirmação) exige confirmar o código de verificação — enquanto isso não
+// acontecer, qualquer ação de escrita manda a pessoa pra aba Perfil, onde
+// fica o campo de confirmar o código.
+function exigeVerificacao() {
+  if (state.perfil.email_verificado) return false;
+  go('perfil');
+  state.banner = 'Confirme o código de verificação (mandamos por e-mail) pra poder postar.';
+  render();
+  return true;
+}
+
 async function sendMessage() {
   var texto = state.composeText.trim();
   if (!texto || !state.activeGroupId) return;
+  if (exigeVerificacao()) return;
   state.composeError = '';
   var { error } = await sb.from('mensagens').insert({ grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto });
   if (error) { state.composeError = error.message; render(); return; }
@@ -534,6 +533,7 @@ async function sendMessage() {
 async function postarInforme() {
   var texto = state.informeFormTexto.trim();
   if (!texto || !state.activeGroupId) { state.banner = 'Escreva o texto do informe.'; render(); return; }
+  if (exigeVerificacao()) return;
   var { error } = await sb.from('mensagens').insert({
     grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto,
     eh_informe: true, exige_confirmacao: state.informeFormExigeConfirmacao
@@ -544,6 +544,7 @@ async function postarInforme() {
 }
 
 async function confirmarLeituraMensagem(id) {
+  if (exigeVerificacao()) return;
   var { error } = await sb.from('mensagens_confirmacoes').insert({ mensagem_id: id, perfil_id: state.session.user.id });
   if (error) { state.banner = error.message; render(); return; }
   state.minhasConfirmacoesMensagens.push(id);
@@ -568,6 +569,7 @@ function removerPasso(idx) {
 async function criarAvisoMural() {
   var titulo = state.muralFormTitulo.trim(), texto = state.muralFormTexto.trim();
   if (!titulo) { state.banner = 'O título do aviso é obrigatório.'; render(); return; }
+  if (exigeVerificacao()) return;
   var passos = state.muralFormPassos
     .map(function (p) { return { data: (p.data || '').trim(), texto: (p.texto || '').trim() }; })
     .filter(function (p) { return p.texto; });
@@ -636,6 +638,7 @@ function toggleAudiencia(categoria) {
 }
 
 async function confirmarLeitura(postId) {
+  if (exigeVerificacao()) return;
   var { error } = await sb.from('mural_confirmacoes').insert({ mural_post_id: postId, perfil_id: state.session.user.id });
   if (error) { state.banner = error.message; render(); return; }
   state.minhasConfirmacoes.push(postId);
@@ -745,23 +748,10 @@ function renderLogin() {
   if (state.loginStatus) { var parts = state.loginStatus.split(':'); statusHtml = '<div class="login-msg ' + parts[0] + '">' + esc(parts.slice(1).join(':')) + '</div>'; }
   var bannerHtml = state.banner ? '<div class="banner-error" style="max-width:300px;">' + esc(state.banner) + '</div>' : '';
 
-  if (state.loginStep === 'codigo') {
-    return renderHeader() + '<div class="center-screen">' + bannerHtml +
-      '<div class="login-mark">' + markSvg() + '</div>' +
-      '<div class="login-title">Digite o código</div>' +
-      '<div class="login-sub">Se os dados baterem com um cadastro, mandamos um código de 6 dígitos pro e-mail já cadastrado na sua convocação. <strong>Pode levar alguns minutos pra chegar</strong> — não é erro, é normal, aguarde. Se demorar demais, confira também a caixa de spam/lixo eletrônico. Vale por 30 minutos.</div>' +
-      '<div class="login-form">' +
-      '<input type="text" inputmode="numeric" maxlength="6" id="login-codigo-input" placeholder="000000" style="text-align:center; font-size:20px; letter-spacing:6px;" value="' + esc(state.loginCodigo) + '">' +
-      '<button class="login-btn" data-action="confirmar-codigo" ' + (state.loginSending ? 'disabled' : '') + '>' + (state.loginSending ? 'Confirmando…' : 'Confirmar código') + '</button>' +
-      '<button class="link-btn" data-action="voltar-identidade" style="justify-content:center; margin-top:0;">Voltar</button>' +
-      '<div style="background:#FBF5E8; border:1px solid #E4CA8B; border-radius:8px; padding:10px 12px; font-size:11.5px; color:#5A4A20; text-align:left; margin-top:4px;"><strong>Nunca compartilhe este código com ninguém</strong> — nem por telefone, nem por WhatsApp. Ninguém do Cartório Eleitoral ou do TRE-PE vai ligar ou mandar mensagem pedindo esse código.</div>' +
-      '</div>' + statusHtml + '</div>';
-  }
-
   return renderHeader() + '<div class="center-screen">' + bannerHtml +
     '<div class="login-mark">' + markSvg() + '</div>' +
     '<div class="login-title">Entrar</div>' +
-    '<div class="login-sub">Confirme os dados já cadastrados na sua convocação junto ao TRE-PE. Sem senha — vamos mandar um código de acesso pro e-mail cadastrado.</div>' +
+    '<div class="login-sub">Confirme os dados já cadastrados na sua convocação junto ao TRE-PE. Sem senha — se os dados baterem, seu acesso de leitura é liberado na hora (Mural, grupos, tudo). Pra poder postar, mandamos separadamente um código de verificação pro seu e-mail, que você confirma na aba Perfil quando quiser.</div>' +
     '<div class="login-form">' +
     '<input type="text" id="login-nome-input" placeholder="Nome completo" value="' + esc(state.loginNome) + '">' +
     '<input type="text" inputmode="numeric" id="login-cpf-input" placeholder="CPF" value="' + esc(state.loginCpf) + '">' +
@@ -769,7 +759,7 @@ function renderLogin() {
     '<input type="text" id="login-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.loginNascimento) + '">' +
     '<label class="consent-row"><input type="checkbox" id="login-aceite-checkbox"' + (state.loginAceite ? ' checked' : '') + '>' +
     '<span>Li e aceito que meus dados (nome, CPF, título de eleitor, data de nascimento e e-mail) sejam usados para confirmar minha identidade e liberar meu acesso a este aplicativo experimental de comunicação da 4ª Zona Eleitoral, até sua desativação e a exclusão dos meus dados pessoais (prevista para até 15 dias após o fim do pleito).</span></label>' +
-    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Enviar código de acesso') + '</button>' +
+    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Entrar') + '</button>' +
     '</div>' + statusHtml + '</div>';
 }
 
@@ -1074,6 +1064,45 @@ function renderFaqItem(item) {
   html += '</div>'; return html;
 }
 
+async function confirmarVerificacaoEmail() {
+  var codigo = state.verifCodigo.trim();
+  if (!codigo) return;
+  state.verifSending = true; state.verifStatus = ''; render();
+  try {
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      body: JSON.stringify({ codigo: codigo })
+    });
+    var json = await resp.json();
+    state.verifSending = false;
+    if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Código inválido.'); render(); return; }
+    state.perfil.email_verificado = true;
+    state.verifCodigo = ''; state.verifStatus = 'ok:E-mail confirmado! Já pode postar.';
+    render();
+  } catch (e) {
+    state.verifSending = false; state.verifStatus = 'error:Sem conexão. Tente de novo.'; render();
+  }
+}
+
+async function pedirNovoCodigoVerificacao() {
+  state.verifSending = true; state.verifStatus = ''; render();
+  try {
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      body: JSON.stringify({ reenviar: true })
+    });
+    var json = await resp.json();
+    state.verifSending = false;
+    if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Não foi possível reenviar agora.'); render(); return; }
+    state.verifStatus = 'ok:Novo código enviado pra ' + (json.email_mascarado || 'seu e-mail') + '.';
+    render();
+  } catch (e) {
+    state.verifSending = false; state.verifStatus = 'error:Sem conexão. Tente de novo.'; render();
+  }
+}
+
 async function salvarNomeExibicao() {
   var valor = state.perfilFormNomeExibicao.trim() || null;
   var { error } = await sb.from('perfis').update({ nome_exibicao: valor }).eq('id', state.session.user.id);
@@ -1096,6 +1125,18 @@ function renderPerfil() {
     '</div>';
   if (p.is_moderador) {
     html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
+  }
+  if (!p.email_verificado) {
+    var verifStatusHtml = '';
+    if (state.verifStatus) { var vparts = state.verifStatus.split(':'); verifStatusHtml = '<div class="login-msg ' + vparts[0] + '" style="margin-top:8px;">' + esc(vparts.slice(1).join(':')) + '</div>'; }
+    html += '<div class="add-form" style="margin-top:16px; border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Confirme seu e-mail pra poder postar</div>' +
+      '<div class="hint" style="margin:0 2px 8px;">Você já pode ler tudo normalmente. Mandamos um código de 6 dígitos por e-mail — confirme aqui pra liberar postar mensagens, mural e confirmações.</div>' +
+      '<input type="text" inputmode="numeric" maxlength="6" id="verif-codigo-input" placeholder="000000" style="text-align:center; font-size:18px; letter-spacing:5px;" value="' + esc(state.verifCodigo) + '">' +
+      '<div class="add-form-actions"><button class="btn-primary" data-action="confirmar-verificacao" ' + (state.verifSending ? 'disabled' : '') + '>' + (state.verifSending ? 'Confirmando…' : 'Confirmar código') + '</button>' +
+      '<button class="btn-secondary" data-action="reenviar-verificacao" ' + (state.verifSending ? 'disabled' : '') + '>Reenviar código</button></div>' +
+      verifStatusHtml +
+      '<div class="hint" style="margin-top:10px;">Não recebeu? Confira o spam, ou peça apoio à equipe do TRE (Cartório Eleitoral).</div>' +
+      '</div>';
   }
   html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Nome de exibição</div>' +
     '<div class="hint" style="margin:0 2px 8px;">É o nome que aparece do lado das suas mensagens nos grupos. Se deixar em branco, usamos só seu primeiro nome (' + esc(primeiroNome(p.nome_completo)) + ').</div>' +
@@ -1188,9 +1229,6 @@ document.addEventListener('click', function (e) {
   if (!el) return;
   var action = el.getAttribute('data-action');
   if (action === 'solicitar-codigo') solicitarCodigo();
-  else if (action === 'confirmar-codigo') confirmarCodigo();
-  else if (action === 'verificar-sessao') verificarSessao();
-  else if (action === 'voltar-identidade') voltarParaIdentidade();
   else if (action === 'logout') logout();
   else if (action === 'nav-mural') go('mural');
   else if (action === 'nav-grupos') go('grupos');
@@ -1208,6 +1246,8 @@ document.addEventListener('click', function (e) {
   }
   else if (action === 'open-painel') go('painel');
   else if (action === 'salvar-nome-exibicao') salvarNomeExibicao();
+  else if (action === 'confirmar-verificacao') confirmarVerificacaoEmail();
+  else if (action === 'reenviar-verificacao') pedirNovoCodigoVerificacao();
   else if (action === 'send-message') sendMessage();
   else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
   else if (action === 'remove-member' || action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
@@ -1254,7 +1294,6 @@ document.addEventListener('input', function (e) {
   else if (id === 'login-cpf-input') { state.loginCpf = maskCPF(e.target.value); aplicarMascara(e.target, state.loginCpf); }
   else if (id === 'login-titulo-input') { state.loginTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.loginTitulo); }
   else if (id === 'login-nascimento-input') { state.loginNascimento = maskData(e.target.value); aplicarMascara(e.target, state.loginNascimento); }
-  else if (id === 'login-codigo-input') state.loginCodigo = e.target.value;
   else if (id === 'faq-search-input') { state.faqSearch = e.target.value; state.activeFaqCat = null; render(); }
   else if (id === 'compose-input') state.composeText = e.target.value;
   else if (id === 'mural-titulo-input') state.muralFormTitulo = e.target.value;
@@ -1264,13 +1303,14 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-name-input') state.newName = e.target.value;
   else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
+  else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
   else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
 });
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
   if (e.target.id === 'compose-input') sendMessage();
   else if (e.target.id === 'login-nascimento-input') solicitarCodigo();
-  else if (e.target.id === 'login-codigo-input') confirmarCodigo();
+  else if (e.target.id === 'verif-codigo-input') confirmarVerificacaoEmail();
 });
 document.addEventListener('change', function (e) {
   if (e.target.id === 'new-group-select') state.newGroup = e.target.value;
