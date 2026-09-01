@@ -764,7 +764,7 @@ async function reenviarParaConvocado(perfilId, canal) {
     state.listaEsperaEnviando = null;
     if (!resp.ok) { state.banner = json.error || 'Não foi possível enviar agora.'; render(); return; }
     if (canal === 'whatsapp') {
-      var texto = 'Olá, ' + json.nome + '! Seu código de verificação do TRE-PE Apoio 2026 é: ' + json.codigo + '. Digite ele na aba Perfil do app pra liberar postar. Válido por 24 horas — não compartilhe com mais ninguém.';
+      var texto = 'Olá, ' + primeiroNome(json.nome) + '! Seu código de verificação do TRE-PE Apoio 2026 é: ' + json.codigo + '. Digite ele na aba Perfil do app pra liberar postar. Válido por 24 horas — não compartilhe com mais ninguém.';
       window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
     } else {
       state.banner = 'Código enviado por e-mail pra ' + (json.email_mascarado || 'a pessoa') + '.';
