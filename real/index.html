@@ -208,6 +208,80 @@ var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // categoria nova sem ícone específico cair num ícone padrão.
 var AVATAR_COLORS = ['#16294B', '#7A4E3E', '#4E6E4E', '#6E5A2E', '#5A4A7A'];
 
+// Função é conjunto fechado (combo) — determina sozinha o tipo de Local
+// (TRE/Operador não pedem escola nem seção; Administrador pede só escola;
+// os cargos de mesa pedem escola + seção). Lista das escolas é hardcoded a
+// partir da planilha do TRE da 4ª Zona — seções de cada escola já foram
+// pré-cadastradas no banco (provisórias, sem numeração real ainda).
+var FUNCOES_TRE = ['TRE', 'Operador', 'Administrador', 'Presidente', '1º Mesário', '2º Mesário', 'Secretário', 'Suplente'];
+var FUNCOES_MESA = ['Presidente', '1º Mesário', '2º Mesário', 'Secretário', 'Suplente'];
+function localTipoDaFuncao(funcao) {
+  if (funcao === 'Operador') return 'operadores';
+  if (funcao === 'Administrador') return 'escola';
+  if (FUNCOES_MESA.indexOf(funcao) !== -1) return 'secao';
+  return 'tre';
+}
+function numeroDoSlugSecao(slug) { return (slug || '').replace(/^secao-/, ''); }
+
+var ESCOLAS_TRE = [
+  { ponto: 'UNIBRA', escolas: [
+    "Centro de Educação, Tecnologia e Cidadania (CETEC) — Ant. Centro Nóbrega",
+    "UNIBRA",
+    "Colégio Salesiano Sagrado Coração"
+  ] },
+  { ponto: 'ETE - Ginásio Pernambucano', escolas: [
+    "ETE - Escola Técnica Estadual - Ginásio Pernambucano",
+    "ETE - Escola Técnica Estadual Almirante Soares Dutra",
+    "Escola Aníbal Fernandes",
+    "Escola Estadual José Maria"
+  ] },
+  { ponto: 'SENAC', escolas: [
+    "EREM Sizenando Silveira",
+    "Escola Luiz Delgado",
+    "Escola de Referência em Ensino Médio Sylvio Rabello",
+    "Escola Cônego Rochael de Medeiros",
+    "Escola Waldemar de Oliveira",
+    "SENAC"
+  ] },
+  { ponto: 'Cartório', escolas: [
+    "Escola Municipal de Tempo Integral José da Costa Porto",
+    "Escola de Referência em Ensino Médio Joaquim Nabuco",
+    "ATI - Agência Estadual de Tecnologia da Informação",
+    "EREM Poeta Manuel Bandeira",
+    "EREM Oliveira Lima",
+    "Escola de Referência em Ensino Fundamental Monsenhor Leonardo de Barros",
+    "Escola Municipal Professor Josué de Castro",
+    "CEMEI - Centro Municipal de Educação Infantil Mãezinha do Coque"
+  ] },
+  { ponto: 'Campo Grande - EREM Nóbrega', escolas: [
+    "Escola Estadual Dom Carlos Coelho",
+    "Escola de Referência em Ensino Médio Nóbrega (antigo Olívio Montenegro)",
+    "Escola Municipal Compositor Capiba (antigo Radical Colégio e Curso)",
+    "Escola Municipal Santa Cecília",
+    "Escola Municipal Professora Hélia Maria Pereira",
+    "Casa da Amizade",
+    "Colégio Jesus Crucificado",
+    "Paróquia Nossa Senhora do Bom Parto — Ant. Centro Paroquial Campo Grande",
+    "Escola Espaço Dinâmico"
+  ] },
+  { ponto: 'Campo Grande - EREM Clóvis Bevilaqua', escolas: [
+    "Cenáculo Espírita Casa de Maria",
+    "Escola Municipal Mário Melo",
+    "Escola Embaixador Gilberto Amado",
+    "Escola Municipal Professora Jandira Botelho",
+    "Colégio Imaculado Coração de Maria",
+    "Escola de Referência em Ensino Médio Clóvis Bevilaqua",
+    "Colégio do Saber"
+  ] },
+  { ponto: 'Campina do Barreto', escolas: [
+    "Escola Municipal Campina do Barreto",
+    "Escola Estadual Jarbas Pernambucano",
+    "Escola Estadual São Judas Tadeu",
+    "Escola Municipal Água Fria",
+    "Escola Municipal Água Fria - Anexo"
+  ] }
+];
+
 var ICON_STYLE = {
   geral: { icon: 'home', bg: '#1F3A63' },
   funcao: { icon: 'building', bg: '#3E5A85' },
@@ -319,8 +393,8 @@ var state = {
   listaEspera: [], listaEsperaEnviando: null,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
-  newLocalTipo: 'tre', newEscola: '', newSecao: '',
-  editingConvocadoId: null, editNome: '', editFuncao: '', editLocalTipo: 'tre', editEscola: '', editSecao: '',
+  newEscola: '', newSecao: '',
+  editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '',
   showImportForm: false, importEnviando: false, importResultado: null,
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
@@ -808,7 +882,7 @@ function localDaPessoa(pessoa) {
   if (g.slug === 'operadores') return { tipo: 'operadores', escola: '', secao: '' };
   if (g.tipo === 'secao') {
     var escolaGrupo = state.allGroups.find(function (x) { return x.id === g.escola_id; });
-    return { tipo: 'secao', escola: escolaGrupo ? escolaGrupo.nome : '', secao: g.nome.replace(/^Seção\s*/, '') };
+    return { tipo: 'secao', escola: escolaGrupo ? escolaGrupo.nome : '', secao: numeroDoSlugSecao(g.slug) };
   }
   if (g.tipo === 'escola') return { tipo: 'escola', escola: g.nome, secao: '' };
   return { tipo: 'tre', escola: '', secao: '' };
@@ -867,8 +941,8 @@ async function removerIntegrante(perfilId) {
   await loadPainelMembers();
 }
 async function adicionarIntegrante() {
-  var email = state.newEmail.trim(), nome = state.newName.trim(), funcao = state.newFuncao.trim();
-  if (!email || !nome) return;
+  var email = state.newEmail.trim(), nome = state.newName.trim(), funcao = state.newFuncao;
+  if (!email || !nome || !funcao) return;
   state.banner = '';
   try {
     var { data: sessionData } = await sb.auth.getSession();
@@ -878,14 +952,14 @@ async function adicionarIntegrante() {
       body: JSON.stringify({
         email: email, nome_completo: nome, funcao: funcao,
         cpf: state.newCpf, titulo: state.newTitulo, data_nascimento: state.newNascimento,
-        local_tipo: state.newLocalTipo, escola: state.newEscola, secao: state.newSecao
+        local_tipo: localTipoDaFuncao(funcao), escola: state.newEscola, secao: state.newSecao
       })
     });
     var json = await resp.json();
     if (!resp.ok) { state.banner = 'Não foi possível adicionar: ' + (json.error || resp.status); render(); return; }
   } catch (e) { state.banner = 'Não foi possível contatar o servidor de convite.'; render(); return; }
   state.showAddForm = false; state.newEmail = ''; state.newName = ''; state.newFuncao = '';
-  state.newCpf = ''; state.newTitulo = ''; state.newNascimento = ''; state.newLocalTipo = 'tre'; state.newEscola = ''; state.newSecao = '';
+  state.newCpf = ''; state.newTitulo = ''; state.newNascimento = ''; state.newEscola = ''; state.newSecao = '';
   await loadPainelMembers();
 }
 
@@ -895,8 +969,8 @@ function abrirEditarConvocado(perfilId) {
   var local = localDaPessoa(pessoa);
   state.editingConvocadoId = perfilId;
   state.editNome = pessoa.nome_completo || '';
-  state.editFuncao = pessoa.funcao || '';
-  state.editLocalTipo = local.tipo; state.editEscola = local.escola; state.editSecao = local.secao;
+  state.editFuncao = FUNCOES_TRE.indexOf(pessoa.funcao) !== -1 ? pessoa.funcao : '';
+  state.editEscola = local.escola; state.editSecao = local.secao;
   render();
 }
 function cancelarEditarConvocado() {
@@ -907,7 +981,7 @@ async function salvarEditarConvocado() {
   var perfilId = state.editingConvocadoId;
   if (!perfilId) return;
   var nome = state.editNome.trim();
-  if (!nome) return;
+  if (!nome || !state.editFuncao) return;
   state.banner = '';
   try {
     var { data: sessionData } = await sb.auth.getSession();
@@ -915,8 +989,8 @@ async function salvarEditarConvocado() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
       body: JSON.stringify({
-        perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao.trim(),
-        local_tipo: state.editLocalTipo, escola: state.editEscola, secao: state.editSecao
+        perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao,
+        local_tipo: localTipoDaFuncao(state.editFuncao), escola: state.editEscola, secao: state.editSecao
       })
     });
     var json = await resp.json();
@@ -1536,11 +1610,11 @@ function renderPainel() {
     html += '<div class="add-form"><div class="add-form-title">Novo integrante</div>' +
       '<input type="email" id="new-email-input" placeholder="E-mail já cadastrado no TRE" value="' + esc(state.newEmail) + '">' +
       '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
-      '<input type="text" id="new-funcao-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.newFuncao) + '">' +
+      renderFuncaoCampo('new', state.newFuncao) +
       '<input type="text" inputmode="numeric" id="new-cpf-input" placeholder="CPF" value="' + esc(state.newCpf) + '">' +
       '<input type="text" inputmode="numeric" id="new-titulo-input" placeholder="Título de eleitor" value="' + esc(state.newTitulo) + '">' +
       '<input type="text" id="new-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.newNascimento) + '">' +
-      renderLocalCampos('new', state.newLocalTipo, state.newEscola, state.newSecao) +
+      renderLocalCampos('new', state.newFuncao, state.newEscola, state.newSecao) +
       '<div class="add-form-actions"><button class="btn-primary" data-action="confirmar-add">Adicionar</button><button class="btn-secondary" data-action="cancelar-add">Cancelar</button></div>' +
       '<div class="hint" style="margin-top:8px;">Cria a conta do convocado e adiciona ao Geral + aos grupos do Local escolhido.</div></div>';
   } else {
@@ -1549,32 +1623,55 @@ function renderPainel() {
   return html;
 }
 
-function renderLocalCampos(prefix, tipo, escolaVal, secaoVal) {
-  var opcoes = [
-    ['tre', 'TRE (Cartório / Equipe)'],
-    ['operadores', 'Operadores (Mídia de Resultado)'],
-    ['escola', 'Escola (Administrador de Prédio)'],
-    ['secao', 'Seção (Mesário/a)']
-  ];
-  var html = '<select id="' + prefix + '-local-tipo-select">' +
-    opcoes.map(function (o) { return '<option value="' + o[0] + '"' + (tipo === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') +
+function renderFuncaoCampo(prefix, funcaoVal) {
+  return '<select id="' + prefix + '-funcao-select">' +
+    '<option value=""' + (!funcaoVal ? ' selected' : '') + ' disabled>Selecione a função…</option>' +
+    FUNCOES_TRE.map(function (f) { return '<option value="' + esc(f) + '"' + (funcaoVal === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
     '</select>';
+}
+
+function renderLocalCampos(prefix, funcaoVal, escolaVal, secaoVal) {
+  var tipo = localTipoDaFuncao(funcaoVal);
+  var html = '';
   if (tipo === 'escola' || tipo === 'secao') {
-    var escolasExistentes = state.allGroups.filter(function (g) { return g.tipo === 'escola'; });
-    html += '<input type="text" id="' + prefix + '-escola-input" list="' + prefix + '-escolas-datalist" placeholder="Nome da escola (ex: Escola Mário Melo)" value="' + esc(escolaVal) + '">' +
-      '<datalist id="' + prefix + '-escolas-datalist">' + escolasExistentes.map(function (g) { return '<option value="' + esc(g.nome) + '">'; }).join('') + '</datalist>';
+    html += '<select id="' + prefix + '-escola-select">' +
+      '<option value=""' + (!escolaVal ? ' selected' : '') + ' disabled>Selecione a escola…</option>' +
+      ESCOLAS_TRE.map(function (p) {
+        return '<optgroup label="' + esc(p.ponto) + '">' +
+          p.escolas.map(function (nome) { return '<option value="' + esc(nome) + '"' + (escolaVal === nome ? ' selected' : '') + '>' + esc(nome) + '</option>'; }).join('') +
+          '</optgroup>';
+      }).join('') +
+      '</select>';
   }
   if (tipo === 'secao') {
-    html += '<input type="text" inputmode="numeric" id="' + prefix + '-secao-input" placeholder="Número da seção (ex: 280)" value="' + esc(secaoVal) + '">';
+    var secoesDaEscola = state.allGroups.filter(function (g) { return g.tipo === 'secao' && g.escola_id === (escolaIdPorNome(escolaVal) || '__nenhuma__'); })
+      .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }); });
+    if (!escolaVal) {
+      html += '<div class="hint" style="margin:0 2px 8px;">Selecione a escola pra ver as seções dela.</div>';
+    } else if (!secoesDaEscola.length) {
+      html += '<div class="hint" style="margin:0 2px 8px; color:#A24B3E;">Nenhuma seção cadastrada pra essa escola ainda.</div>';
+    } else {
+      html += '<select id="' + prefix + '-secao-select">' +
+        '<option value=""' + (!secaoVal ? ' selected' : '') + ' disabled>Selecione a seção…</option>' +
+        secoesDaEscola.map(function (g) {
+          var numero = numeroDoSlugSecao(g.slug);
+          return '<option value="' + esc(numero) + '"' + (secaoVal === numero ? ' selected' : '') + '>' + esc(g.nome) + '</option>';
+        }).join('') +
+        '</select>';
+    }
   }
   return html;
+}
+function escolaIdPorNome(nome) {
+  var g = state.allGroups.find(function (x) { return x.tipo === 'escola' && x.nome === nome; });
+  return g ? g.id : null;
 }
 
 function renderEditarConvocadoForm(m) {
   return '<div class="add-form"><div class="add-form-title">Editar ' + esc(m.nome_completo) + '</div>' +
     '<input type="text" id="edit-nome-input" placeholder="Nome completo" value="' + esc(state.editNome) + '">' +
-    '<input type="text" id="edit-funcao-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.editFuncao) + '">' +
-    renderLocalCampos('edit', state.editLocalTipo, state.editEscola, state.editSecao) +
+    renderFuncaoCampo('edit', state.editFuncao) +
+    renderLocalCampos('edit', state.editFuncao, state.editEscola, state.editSecao) +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-editar-convocado">Salvar</button><button class="btn-secondary" data-action="cancelar-editar-convocado">Cancelar</button></div>' +
     '</div>';
 }
@@ -1746,16 +1843,10 @@ document.addEventListener('input', function (e) {
   else if (id === 'mural-topicos-titulo-input') state.muralFormTopicosTitulo = e.target.value;
   else if (id === 'new-email-input') state.newEmail = e.target.value;
   else if (id === 'new-name-input') state.newName = e.target.value;
-  else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
   else if (id === 'new-cpf-input') { state.newCpf = maskCPF(e.target.value); aplicarMascara(e.target, state.newCpf); }
   else if (id === 'new-titulo-input') { state.newTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.newTitulo); }
   else if (id === 'new-nascimento-input') { state.newNascimento = maskData(e.target.value); aplicarMascara(e.target, state.newNascimento); }
-  else if (id === 'new-escola-input') state.newEscola = e.target.value;
-  else if (id === 'new-secao-input') state.newSecao = e.target.value;
   else if (id === 'edit-nome-input') state.editNome = e.target.value;
-  else if (id === 'edit-funcao-input') state.editFuncao = e.target.value;
-  else if (id === 'edit-escola-input') state.editEscola = e.target.value;
-  else if (id === 'edit-secao-input') state.editSecao = e.target.value;
   else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
@@ -1769,8 +1860,12 @@ document.addEventListener('keydown', function (e) {
   else if (e.target.id === 'verif-codigo-input') confirmarVerificacaoEmail();
 });
 document.addEventListener('change', function (e) {
-  if (e.target.id === 'new-local-tipo-select') { state.newLocalTipo = e.target.value; render(); }
-  else if (e.target.id === 'edit-local-tipo-select') { state.editLocalTipo = e.target.value; render(); }
+  if (e.target.id === 'new-funcao-select') { state.newFuncao = e.target.value; state.newEscola = ''; state.newSecao = ''; render(); }
+  else if (e.target.id === 'edit-funcao-select') { state.editFuncao = e.target.value; state.editEscola = ''; state.editSecao = ''; render(); }
+  else if (e.target.id === 'new-escola-select') { state.newEscola = e.target.value; state.newSecao = ''; render(); }
+  else if (e.target.id === 'edit-escola-select') { state.editEscola = e.target.value; state.editSecao = ''; render(); }
+  else if (e.target.id === 'new-secao-select') state.newSecao = e.target.value;
+  else if (e.target.id === 'edit-secao-select') state.editSecao = e.target.value;
   else if (e.target.id === 'import-file-input') { if (e.target.files && e.target.files[0]) processarArquivoImport(e.target.files[0]); }
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
