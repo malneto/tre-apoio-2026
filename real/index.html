@@ -244,7 +244,8 @@ var ICONS = {
   mail: '<rect x="3" y="5" width="14" height="10" rx="1.5"/><path d="M4 6.5l6 4.5 6-4.5"/>',
   whatsapp: '<path d="M10 3a7 7 0 00-6 10.6L3 17l3.5-1a7 7 0 103.5-13z"/><path d="M7 8.5c.3 2.5 2 4.2 4.5 4.5"/>',
   edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
-  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>'
+  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>',
+  upload: '<path d="M10 3v9M6.5 6.5L10 3l3.5 3.5"/><path d="M4 14v1.5A1.5 1.5 0 005.5 17h9a1.5 1.5 0 001.5-1.5V14"/>'
 };
 function icon(name, size, stroke, fill) {
   size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
@@ -302,6 +303,7 @@ var state = {
   myGroups: [], expandedEscolaId: null,
   activeGroupId: null, activeGroupMeta: null,
   threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false, threadMembersExpanded: false,
+  composeCooldownRestante: 0, composeCooldownOk: false,
   minhasConfirmacoesMensagens: [], showInformeForm: false, informeFormTexto: '', informeFormExigeConfirmacao: false,
   muralPosts: [], reviewQueue: [],
   showMuralForm: false, muralFormTitulo: '', muralFormTexto: '', muralFormPassos: [],
@@ -312,11 +314,14 @@ var state = {
   editingMuralId: null, historicoMural: {}, expandedHistoricoId: null,
   faqSearch: '', activeFaqCat: null, expandedFaqId: null, faqPerguntas: [], faqLoaded: false,
   showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
-  painelFilter: 'todos', allGroups: [], painelMembers: [],
+  painelFilter: 'todos', allGroups: [], painelMembers: [], painelBusca: '',
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
   listaEspera: [], listaEsperaEnviando: null,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
-  showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
+  showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
+  newLocalTipo: 'tre', newEscola: '', newSecao: '',
+  editingConvocadoId: null, editNome: '', editFuncao: '', editLocalTipo: 'tre', editEscola: '', editSecao: '',
+  showImportForm: false, importEnviando: false, importResultado: null,
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
   online: navigator.onLine,
@@ -426,9 +431,9 @@ async function attachAutores(posts) {
 
 async function loadMural() {
   var vejoPendentes = state.perfil.is_moderador || state.perfil.is_revisor;
-  var publicadosPromise = sb.from('mural_posts').select('*').eq('status', 'publicado').order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
+  var publicadosPromise = sb.from('mural_posts').select('*').eq('status', 'publicado').is('removida_em', null).order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
   var pendentesPromise = vejoPendentes
-    ? sb.from('mural_posts').select('*').eq('status', 'pendente').order('criado_em', { ascending: true })
+    ? sb.from('mural_posts').select('*').eq('status', 'pendente').is('removida_em', null).order('criado_em', { ascending: true })
     : Promise.resolve({ data: [] });
   var resultados = await Promise.all([publicadosPromise, pendentesPromise]);
   state.muralPosts = resultados[0].data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
@@ -456,6 +461,7 @@ async function loadThread(grupo) {
   if (state.activeGroupId !== grupo.id) state.threadMembersExpanded = false;
   state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
   state.screen = 'thread'; state.threadMessages = []; state.threadMembers = []; state.composeError = '';
+  clearInterval(composeCooldownTimer); state.composeCooldownRestante = 0; state.composeCooldownOk = false;
   render();
   var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
   var membersPromise = state.perfil.is_moderador
@@ -509,13 +515,38 @@ function exigeVerificacao() {
   return true;
 }
 
+var composeCooldownTimer = null;
+function iniciarContagemRegressivaEnvio(segundos) {
+  clearInterval(composeCooldownTimer);
+  state.composeCooldownRestante = segundos;
+  state.composeCooldownOk = false;
+  composeCooldownTimer = setInterval(function () {
+    state.composeCooldownRestante--;
+    if (state.composeCooldownRestante <= 0) {
+      clearInterval(composeCooldownTimer);
+      state.composeCooldownRestante = 0;
+      state.composeCooldownOk = true;
+    }
+    render();
+  }, 1000);
+  render();
+}
+
 async function sendMessage() {
   var texto = state.composeText.trim();
   if (!texto || !state.activeGroupId) return;
   if (exigeVerificacao()) return;
+  if (state.composeCooldownRestante > 0) return;
   state.composeError = '';
+  state.composeCooldownOk = false;
   var { error } = await sb.from('mensagens').insert({ grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto });
-  if (error) { state.composeError = error.message; render(); return; }
+  if (error) {
+    var msg = error.message || '';
+    var m = msg.match(/Espere (\d+) segundos/);
+    if (m) { iniciarContagemRegressivaEnvio(parseInt(m[1], 10)); }
+    else { state.composeError = msg; render(); }
+    return;
+  }
   state.composeText = '';
   await loadThread(state.activeGroupMeta);
 }
@@ -668,6 +699,11 @@ async function rejeitarMural(id) {
   await sb.from('mural_posts').update({ status: 'rejeitado', revisado_por: state.session.user.id, revisado_em: new Date().toISOString(), motivo_rejeicao: motivo }).eq('id', id);
   await loadMural(); render();
 }
+async function removerAvisoMural(id) {
+  if (!confirm('Remover este aviso do Mural? Ele some da lista pra todo mundo (fica guardado, não é apagado de verdade).')) return;
+  await sb.from('mural_posts').update({ removida_em: new Date().toISOString(), removida_por: state.session.user.id }).eq('id', id);
+  await loadMural(); render();
+}
 
 var FAQ_CAT_ICON = { urna: 'urna', encerramento: 'logout', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' };
 
@@ -721,7 +757,6 @@ function semAcentoDisplay(s) { return (s || '').normalize('NFD').replace(/[\u030
 async function loadPainel() {
   var { data: grupos } = await sb.from('grupos').select('*').order('nome');
   state.allGroups = grupos || [];
-  if (!state.newGroup && grupos && grupos.length) state.newGroup = grupos.find(function (g) { return g.slug !== 'geral'; }).slug;
   var { data: config } = await sb.from('configuracao').select('valor').eq('chave', 'geral_intervalo_segundos').maybeSingle();
   state.configGeralIntervalo = config ? config.valor : '60';
   await Promise.all([loadPainelMembers(), loadListaEspera()]);
@@ -737,14 +772,50 @@ async function salvarConfigGeralIntervalo() {
   render();
 }
 async function loadPainelMembers() {
-  var q = sb.from('memberships').select('perfil_id, grupo_id, papel, perfis(nome_completo, funcao, email_verificado), grupos(nome, slug)');
+  var q = sb.from('memberships').select('perfil_id, grupo_id, perfis!inner(id, nome_completo, funcao, email_verificado, ativo), grupos(nome, slug, tipo, escola_id)').eq('perfis.ativo', true);
   if (state.painelFilter !== 'todos') {
     var g = state.allGroups.find(function (x) { return x.slug === state.painelFilter; });
     if (g) q = q.eq('grupo_id', g.id);
   }
   var { data } = await q;
-  state.painelMembers = data || [];
+  state.painelMembers = agruparPorPessoa(data || []);
   render();
+}
+// Uma pessoa aparece 1x na lista mesmo pertencendo a vários grupos (Geral +
+// Seção + Geral-da-escola, por exemplo) — junta tudo isso num "Local" só.
+function agruparPorPessoa(linhas) {
+  var porPessoa = {};
+  var ordem = [];
+  linhas.forEach(function (m) {
+    if (!m.perfis) return;
+    var id = m.perfil_id;
+    if (!porPessoa[id]) {
+      porPessoa[id] = { id: id, nome_completo: m.perfis.nome_completo, funcao: m.perfis.funcao, email_verificado: m.perfis.email_verificado, gruposPrimarios: [] };
+      ordem.push(id);
+    }
+    var g = m.grupos;
+    if (!g || g.slug === 'geral' || g.tipo === 'escola_geral') return;
+    porPessoa[id].gruposPrimarios.push(g);
+  });
+  return ordem.map(function (id) { return porPessoa[id]; })
+    .sort(function (a, b) { return (a.nome_completo || '').localeCompare(b.nome_completo || '', 'pt-BR'); });
+}
+// A partir dos grupos "primários" de uma pessoa, reconstrói o Local (tipo +
+// escola/seção) pra pré-preencher o formulário de edição.
+function localDaPessoa(pessoa) {
+  var g = pessoa.gruposPrimarios[0];
+  if (!g) return { tipo: 'tre', escola: '', secao: '' };
+  if (g.slug === 'operadores') return { tipo: 'operadores', escola: '', secao: '' };
+  if (g.tipo === 'secao') {
+    var escolaGrupo = state.allGroups.find(function (x) { return x.id === g.escola_id; });
+    return { tipo: 'secao', escola: escolaGrupo ? escolaGrupo.nome : '', secao: g.nome.replace(/^Seção\s*/, '') };
+  }
+  if (g.tipo === 'escola') return { tipo: 'escola', escola: g.nome, secao: '' };
+  return { tipo: 'tre', escola: '', secao: '' };
+}
+function localTexto(pessoa) {
+  if (!pessoa.gruposPrimarios.length) return 'TRE';
+  return pessoa.gruposPrimarios.map(function (g) { return g.nome; }).join(' + ');
 }
 async function loadListaEspera() {
   var { data } = await sb.from('perfis').select('id, nome_completo').eq('email_verificado', false).eq('ativo', true).order('nome_completo');
@@ -775,26 +846,145 @@ async function reenviarParaConvocado(perfilId, canal) {
   }
 }
 
-async function removerIntegrante(perfilId, grupoId) {
-  if (!confirm('Remover este integrante do grupo?')) return;
+async function removerDoGrupo(perfilId, grupoId) {
+  if (!confirm('Tirar esta pessoa deste grupo? Ela continua no Geral e nos outros grupos dela.')) return;
   await sb.from('memberships').delete().eq('perfil_id', perfilId).eq('grupo_id', grupoId);
+  await loadThread(state.activeGroupMeta);
+}
+async function removerIntegrante(perfilId) {
+  if (!confirm('Remover esta pessoa? Ela perde o acesso ao app inteiro (mensagens antigas dela continuam aparecendo, com o nome certo).')) return;
+  state.banner = '';
+  try {
+    var { data: sessionData } = await sb.auth.getSession();
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/remover-convocado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
+      body: JSON.stringify({ perfil_id: perfilId })
+    });
+    var json = await resp.json();
+    if (!resp.ok) { state.banner = json.error || 'Não foi possível remover agora.'; render(); return; }
+  } catch (e) { state.banner = 'Sem conexão. Tente de novo.'; render(); return; }
   await loadPainelMembers();
 }
 async function adicionarIntegrante() {
-  var email = state.newEmail.trim(), nome = state.newName.trim(), funcao = state.newFuncao.trim(), grupoSlug = state.newGroup;
-  if (!email || !nome || !grupoSlug) return;
+  var email = state.newEmail.trim(), nome = state.newName.trim(), funcao = state.newFuncao.trim();
+  if (!email || !nome) return;
   state.banner = '';
   try {
     var { data: sessionData } = await sb.auth.getSession();
     var resp = await fetch(SUPABASE_URL + '/functions/v1/convidar-convocado', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
-      body: JSON.stringify({ email: email, nome_completo: nome, funcao: funcao, grupo_slug: grupoSlug })
+      body: JSON.stringify({
+        email: email, nome_completo: nome, funcao: funcao,
+        cpf: state.newCpf, titulo: state.newTitulo, data_nascimento: state.newNascimento,
+        local_tipo: state.newLocalTipo, escola: state.newEscola, secao: state.newSecao
+      })
     });
     var json = await resp.json();
     if (!resp.ok) { state.banner = 'Não foi possível adicionar: ' + (json.error || resp.status); render(); return; }
   } catch (e) { state.banner = 'Não foi possível contatar o servidor de convite.'; render(); return; }
   state.showAddForm = false; state.newEmail = ''; state.newName = ''; state.newFuncao = '';
+  state.newCpf = ''; state.newTitulo = ''; state.newNascimento = ''; state.newLocalTipo = 'tre'; state.newEscola = ''; state.newSecao = '';
+  await loadPainelMembers();
+}
+
+function abrirEditarConvocado(perfilId) {
+  var pessoa = state.painelMembers.find(function (p) { return p.id === perfilId; });
+  if (!pessoa) return;
+  var local = localDaPessoa(pessoa);
+  state.editingConvocadoId = perfilId;
+  state.editNome = pessoa.nome_completo || '';
+  state.editFuncao = pessoa.funcao || '';
+  state.editLocalTipo = local.tipo; state.editEscola = local.escola; state.editSecao = local.secao;
+  render();
+}
+function cancelarEditarConvocado() {
+  state.editingConvocadoId = null;
+  render();
+}
+async function salvarEditarConvocado() {
+  var perfilId = state.editingConvocadoId;
+  if (!perfilId) return;
+  var nome = state.editNome.trim();
+  if (!nome) return;
+  state.banner = '';
+  try {
+    var { data: sessionData } = await sb.auth.getSession();
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/editar-convocado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
+      body: JSON.stringify({
+        perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao.trim(),
+        local_tipo: state.editLocalTipo, escola: state.editEscola, secao: state.editSecao
+      })
+    });
+    var json = await resp.json();
+    if (!resp.ok) { state.banner = json.error || 'Não foi possível salvar agora.'; render(); return; }
+  } catch (e) { state.banner = 'Sem conexão. Tente de novo.'; render(); return; }
+  state.editingConvocadoId = null;
+  await loadPainelMembers();
+}
+
+// ---------- Importação em massa (CSV/JSON) ----------
+// Colunas esperadas (CSV com cabeçalho, separador , ou ;): email, nome_completo,
+// funcao, cpf, titulo, data_nascimento, local (tre | operadores | escola |
+// secao), escola (nome — obrigatório se local=escola/secao), secao (número —
+// obrigatório se local=secao). JSON: mesma coisa, array de objetos.
+function parseCsvLinha(linha, sep) {
+  var campos = [], atual = '', dentroAspas = false;
+  for (var i = 0; i < linha.length; i++) {
+    var c = linha[i];
+    if (c === '"') { dentroAspas = !dentroAspas; continue; }
+    if (c === sep && !dentroAspas) { campos.push(atual); atual = ''; continue; }
+    atual += c;
+  }
+  campos.push(atual);
+  return campos.map(function (c) { return c.trim(); });
+}
+function parseImportacao(texto) {
+  texto = (texto || '').trim();
+  if (!texto) return [];
+  if (texto[0] === '[' || texto[0] === '{') {
+    var json = JSON.parse(texto);
+    var arr = Array.isArray(json) ? json : [json];
+    return arr.map(function (l) {
+      return { email: l.email, nome_completo: l.nome_completo, funcao: l.funcao || '', cpf: l.cpf, titulo: l.titulo, data_nascimento: l.data_nascimento, local_tipo: l.local || l.local_tipo, escola: l.escola || '', secao: l.secao || '' };
+    });
+  }
+  var linhas = texto.split(/\r?\n/).filter(function (l) { return l.trim(); });
+  if (!linhas.length) return [];
+  var sep = linhas[0].indexOf(';') !== -1 ? ';' : ',';
+  var cabecalho = parseCsvLinha(linhas[0], sep).map(function (c) { return c.toLowerCase(); });
+  return linhas.slice(1).map(function (linha) {
+    var campos = parseCsvLinha(linha, sep);
+    var obj = {};
+    cabecalho.forEach(function (nomeCol, i) { obj[nomeCol] = campos[i] || ''; });
+    return { email: obj.email, nome_completo: obj.nome_completo, funcao: obj.funcao || '', cpf: obj.cpf, titulo: obj.titulo, data_nascimento: obj.data_nascimento, local_tipo: obj.local || obj.local_tipo, escola: obj.escola || '', secao: obj.secao || '' };
+  });
+}
+async function processarArquivoImport(file) {
+  state.banner = '';
+  var texto;
+  try { texto = await file.text(); } catch (e) { state.banner = 'Não foi possível ler o arquivo.'; render(); return; }
+  var linhas;
+  try { linhas = parseImportacao(texto); } catch (e) { state.banner = 'Arquivo inválido: ' + e.message; render(); return; }
+  if (!linhas.length) { state.banner = 'Nenhuma linha encontrada no arquivo.'; render(); return; }
+  state.importEnviando = true; state.importResultado = null; render();
+  try {
+    var { data: sessionData } = await sb.auth.getSession();
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/importar-convocados', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
+      body: JSON.stringify({ linhas: linhas })
+    });
+    var json = await resp.json();
+    state.importEnviando = false;
+    if (!resp.ok) { state.banner = json.error || 'Não foi possível importar agora.'; render(); return; }
+    state.importResultado = json;
+  } catch (e) {
+    state.importEnviando = false; state.banner = 'Sem conexão. Tente de novo.'; render(); return;
+  }
   await loadPainelMembers();
 }
 
@@ -878,7 +1068,12 @@ function renderMural() {
       } else {
         html += '<div class="hint" style="margin-top:8px;">Aguardando revisão do desenvolvedor antes de publicar.</div>';
       }
-      if (state.perfil.is_moderador) html += '<button class="link-btn" style="margin-top:6px;" data-action="editar-mural" data-id="' + p.id + '">' + icon('plus', 13) + ' Editar</button>';
+      if (state.perfil.is_moderador) {
+        html += '<div style="display:flex; gap:6px; margin-top:6px;">' +
+          '<button class="link-btn" style="margin-top:0;" data-action="editar-mural" data-id="' + p.id + '">' + icon('plus', 13) + ' Editar</button>' +
+          '<button class="link-btn" style="margin-top:0; color:#A24B3E;" data-action="remover-mural" data-id="' + p.id + '">' + icon('x', 13) + ' Remover</button>' +
+          '</div>';
+      }
       html += '</div>';
     });
     html += '</div>';
@@ -952,6 +1147,7 @@ function renderMural() {
         '<button class="icon-btn" title="Mover pra baixo" data-action="mover-mural-baixo" data-id="' + post.id + '"' + (posNoBloco === mesmoBloco.length - 1 ? ' disabled' : '') + '>' + icon('chev', 14) + '</button>' +
         '<button class="link-btn" data-action="editar-mural" data-id="' + post.id + '">' + icon('edit', 13) + ' Editar</button>' +
         '<button class="link-btn" data-action="ver-historico-mural" data-id="' + post.id + '">' + icon('clock', 13) + ' Histórico</button>' +
+        '<button class="link-btn" style="color:#A24B3E;" data-action="remover-mural" data-id="' + post.id + '">' + icon('x', 13) + ' Remover</button>' +
         '</div>';
       if (state.expandedHistoricoId === post.id) html += renderHistoricoMural(post.id);
     }
@@ -1031,7 +1227,7 @@ function renderThread() {
         var canRemove = state.perfil.is_moderador && m.perfilId !== state.session.user.id;
         html += '<div class="member-row"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.name) + '</div>' +
           '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.name) + '</div><div class="member-role">' + esc(m.role || '') + '</div></div>' +
-          (canRemove ? '<button class="remove-btn" data-action="remove-member" data-id="' + m.perfilId + '" data-grupo="' + state.activeGroupId + '">' + icon('x', 13) + '</button>' : '') +
+          (canRemove ? '<button class="remove-btn" title="Tirar deste grupo" data-action="remove-do-grupo" data-id="' + m.perfilId + '" data-grupo="' + state.activeGroupId + '">' + icon('x', 13) + '</button>' : '') +
           '</div>';
       });
       html += '</div>';
@@ -1123,9 +1319,16 @@ function renderThreadComposer() {
   } else if (!canPostHint()) {
     html += '<div class="composer-blocked">Você está vendo este grupo como moderador, mas não é integrante dele — só acompanha, não posta aqui.</div>';
   } else {
-    html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '">' +
-      '<button class="send-btn" data-action="send-message">' + icon('send', 16, '#F7F5F0') + '</button></div>';
-    if (state.composeError) html += '<div class="banner-error" style="margin-top:8px; margin-bottom:0;">' + esc(state.composeError) + '</div>';
+    var emCooldown = state.composeCooldownRestante > 0;
+    html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '"' + (emCooldown ? ' disabled' : '') + '>' +
+      '<button class="send-btn" data-action="send-message"' + (emCooldown ? ' disabled' : '') + '>' + icon('send', 16, '#F7F5F0') + '</button></div>';
+    if (emCooldown) {
+      html += '<div class="banner-error" style="margin-top:8px; margin-bottom:0; display:flex; align-items:center; gap:6px;">' + icon('clock', 15) + ' Espere ' + state.composeCooldownRestante + 's para poder enviar de novo…</div>';
+    } else if (state.composeCooldownOk) {
+      html += '<div style="margin-top:8px; display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px;">' + icon('check', 18, '#3E6E4E') + ' Já pode enviar!</div>';
+    } else if (state.composeError) {
+      html += '<div class="banner-error" style="margin-top:8px; margin-bottom:0;">' + esc(state.composeError) + '</div>';
+    }
   }
   html += '</div>';
   return html;
@@ -1308,26 +1511,93 @@ function renderPainel() {
   html += '<div class="filter-row">';
   filters.forEach(function (f) { html += '<button class="filter-chip' + (state.painelFilter === f.id ? ' active' : '') + '" data-action="painel-filter" data-filter="' + f.id + '">' + esc(f.label) + '</button>'; });
   html += '</div>';
-  html += '<div class="eyebrow">Integrantes (' + state.painelMembers.length + ')</div>';
-  state.painelMembers.forEach(function (m, i) {
-    html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.perfis ? m.perfis.nome_completo : '?') + '</div>' +
-      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.perfis ? m.perfis.nome_completo : '—') + '</div><div class="member-role">' + esc(m.perfis ? m.perfis.funcao : '') + ' · ' + esc(m.grupos ? m.grupos.nome : '') + '</div></div>' +
-      '<button class="remove-btn" data-action="remove-integrante" data-id="' + m.perfil_id + '" data-grupo="' + m.grupo_id + '">' + icon('x', 14) + '</button></div>';
+  html += renderImportBlock();
+  var buscaNorm = semAcentoDisplay(state.painelBusca).toLowerCase().trim();
+  var membrosFiltrados = buscaNorm
+    ? state.painelMembers.filter(function (m) { return semAcentoDisplay(m.nome_completo || '').toLowerCase().indexOf(buscaNorm) !== -1; })
+    : state.painelMembers;
+  html += '<input type="text" id="painel-busca-input" placeholder="Buscar integrante pelo nome…" style="margin-bottom:10px;" value="' + esc(state.painelBusca) + '">';
+  html += '<div class="eyebrow">Integrantes (' + membrosFiltrados.length + (buscaNorm ? ' de ' + state.painelMembers.length : '') + ')</div>';
+  if (buscaNorm && !membrosFiltrados.length) html += '<div class="hint">Ninguém encontrado com esse nome.</div>';
+  membrosFiltrados.forEach(function (m, i) {
+    if (state.editingConvocadoId === m.id) { html += renderEditarConvocadoForm(m); return; }
+    var enviandoEmail = state.listaEsperaEnviando === m.id + ':email';
+    var enviandoWpp = state.listaEsperaEnviando === m.id + ':whatsapp';
+    html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.nome_completo) + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.nome_completo) + '</div><div class="member-role">' + esc(m.funcao || '') + ' · ' + esc(localTexto(m)) + (m.email_verificado ? '' : ' · sem código confirmado') + '</div></div>';
+    if (!m.email_verificado) {
+      html += '<button class="icon-btn" title="Enviar código por e-mail" style="margin-right:6px;" data-action="reenviar-espera-email" data-id="' + m.id + '" ' + (enviandoEmail ? 'disabled' : '') + '>' + icon('mail', 14) + '</button>' +
+        '<button class="icon-btn" title="Enviar código por WhatsApp" style="margin-right:6px;" data-action="reenviar-espera-whatsapp" data-id="' + m.id + '" ' + (enviandoWpp ? 'disabled' : '') + '>' + icon('whatsapp', 14, '#3E6E4E') + '</button>';
+    }
+    html += '<button class="icon-btn" title="Editar" style="margin-right:6px;" data-action="abrir-editar-convocado" data-id="' + m.id + '">' + icon('edit', 14) + '</button>' +
+      '<button class="remove-btn" title="Remover" data-action="remove-integrante" data-id="' + m.id + '">' + icon('x', 14) + '</button></div>';
   });
   if (state.showAddForm) {
     html += '<div class="add-form"><div class="add-form-title">Novo integrante</div>' +
       '<input type="email" id="new-email-input" placeholder="E-mail já cadastrado no TRE" value="' + esc(state.newEmail) + '">' +
       '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
       '<input type="text" id="new-funcao-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.newFuncao) + '">' +
-      '<select id="new-group-select">';
-    state.allGroups.filter(function (g) { return g.slug !== 'geral'; }).forEach(function (g) {
-      html += '<option value="' + g.slug + '"' + (state.newGroup === g.slug ? ' selected' : '') + '>' + esc(g.nome) + '</option>';
-    });
-    html += '</select><div class="add-form-actions"><button class="btn-primary" data-action="confirmar-add">Adicionar</button><button class="btn-secondary" data-action="cancelar-add">Cancelar</button></div>' +
-      '<div class="hint" style="margin-top:8px;">Cria a conta do convocado e adiciona ao Geral + ao grupo escolhido.</div></div>';
+      '<input type="text" inputmode="numeric" id="new-cpf-input" placeholder="CPF" value="' + esc(state.newCpf) + '">' +
+      '<input type="text" inputmode="numeric" id="new-titulo-input" placeholder="Título de eleitor" value="' + esc(state.newTitulo) + '">' +
+      '<input type="text" id="new-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.newNascimento) + '">' +
+      renderLocalCampos('new', state.newLocalTipo, state.newEscola, state.newSecao) +
+      '<div class="add-form-actions"><button class="btn-primary" data-action="confirmar-add">Adicionar</button><button class="btn-secondary" data-action="cancelar-add">Cancelar</button></div>' +
+      '<div class="hint" style="margin-top:8px;">Cria a conta do convocado e adiciona ao Geral + aos grupos do Local escolhido.</div></div>';
   } else {
     html += '<button class="add-dashed" data-action="abrir-add">' + icon('plus', 15) + ' Adicionar integrante</button>';
   }
+  return html;
+}
+
+function renderLocalCampos(prefix, tipo, escolaVal, secaoVal) {
+  var opcoes = [
+    ['tre', 'TRE (Cartório / Equipe)'],
+    ['operadores', 'Operadores (Mídia de Resultado)'],
+    ['escola', 'Escola (Administrador de Prédio)'],
+    ['secao', 'Seção (Mesário/a)']
+  ];
+  var html = '<select id="' + prefix + '-local-tipo-select">' +
+    opcoes.map(function (o) { return '<option value="' + o[0] + '"' + (tipo === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') +
+    '</select>';
+  if (tipo === 'escola' || tipo === 'secao') {
+    var escolasExistentes = state.allGroups.filter(function (g) { return g.tipo === 'escola'; });
+    html += '<input type="text" id="' + prefix + '-escola-input" list="' + prefix + '-escolas-datalist" placeholder="Nome da escola (ex: Escola Mário Melo)" value="' + esc(escolaVal) + '">' +
+      '<datalist id="' + prefix + '-escolas-datalist">' + escolasExistentes.map(function (g) { return '<option value="' + esc(g.nome) + '">'; }).join('') + '</datalist>';
+  }
+  if (tipo === 'secao') {
+    html += '<input type="text" inputmode="numeric" id="' + prefix + '-secao-input" placeholder="Número da seção (ex: 280)" value="' + esc(secaoVal) + '">';
+  }
+  return html;
+}
+
+function renderEditarConvocadoForm(m) {
+  return '<div class="add-form"><div class="add-form-title">Editar ' + esc(m.nome_completo) + '</div>' +
+    '<input type="text" id="edit-nome-input" placeholder="Nome completo" value="' + esc(state.editNome) + '">' +
+    '<input type="text" id="edit-funcao-input" placeholder="Função (ex: 2º Mesário)" value="' + esc(state.editFuncao) + '">' +
+    renderLocalCampos('edit', state.editLocalTipo, state.editEscola, state.editSecao) +
+    '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-editar-convocado">Salvar</button><button class="btn-secondary" data-action="cancelar-editar-convocado">Cancelar</button></div>' +
+    '</div>';
+}
+
+function renderImportBlock() {
+  var html = '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Importar convocados (CSV ou JSON)</div>';
+  if (!state.showImportForm) {
+    html += '<button class="add-dashed" data-action="abrir-import">' + icon('upload', 15) + ' Importar lista</button>';
+    html += '</div>';
+    return html;
+  }
+  html += '<div class="hint" style="margin:0 2px 10px;">Colunas do CSV (com cabeçalho): <code>email,nome_completo,funcao,cpf,titulo,data_nascimento,local,escola,secao</code>. ' +
+    '<code>local</code> é <code>tre</code>, <code>operadores</code>, <code>escola</code> ou <code>secao</code>; <code>escola</code>/<code>secao</code> só quando aplicável. Escolas e seções que ainda não existem são criadas automaticamente. JSON no mesmo formato (array de objetos) também funciona.</div>' +
+    '<input type="file" id="import-file-input" accept=".csv,.json,text/csv,application/json" ' + (state.importEnviando ? 'disabled' : '') + '>' +
+    (state.importEnviando ? '<div class="hint" style="margin-top:8px;">Importando…</div>' : '');
+  if (state.importResultado) {
+    html += '<div style="margin-top:10px; display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px;">' + icon('check', 18, '#3E6E4E') + ' ' + state.importResultado.criados + ' convocado(s) criado(s)</div>';
+    if (state.importResultado.erros && state.importResultado.erros.length) {
+      html += '<div class="hint" style="margin-top:6px; color:#A64B4B;">' + state.importResultado.erros.length + ' linha(s) com erro:</div><div class="hint" style="margin-top:2px;">' +
+        state.importResultado.erros.map(function (e) { return 'Linha ' + e.linha + ' (' + esc(e.email) + '): ' + esc(e.erro); }).join('<br>') + '</div>';
+    }
+  }
+  html += '<div class="add-form-actions" style="margin-top:10px;"><button class="btn-secondary" data-action="cancelar-import">Fechar</button></div></div>';
   return html;
 }
 
@@ -1406,8 +1676,13 @@ document.addEventListener('click', function (e) {
   else if (action === 'reenviar-verificacao') pedirNovoCodigoVerificacao();
   else if (action === 'send-message') sendMessage();
   else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
-  else if (action === 'remove-member' || action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
-  else if (action === 'verificar-manualmente') verificarManualmente(el.getAttribute('data-id'), el.getAttribute('data-nome'));
+  else if (action === 'remove-do-grupo') removerDoGrupo(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
+  else if (action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'));
+  else if (action === 'abrir-editar-convocado') abrirEditarConvocado(el.getAttribute('data-id'));
+  else if (action === 'salvar-editar-convocado') salvarEditarConvocado();
+  else if (action === 'cancelar-editar-convocado') cancelarEditarConvocado();
+  else if (action === 'abrir-import') { state.showImportForm = true; state.importResultado = null; render(); }
+  else if (action === 'cancelar-import') { state.showImportForm = false; state.importResultado = null; render(); }
   else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
@@ -1422,6 +1697,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'mover-mural-cima') moverMural(el.getAttribute('data-id'), 'cima');
   else if (action === 'mover-mural-baixo') moverMural(el.getAttribute('data-id'), 'baixo');
   else if (action === 'ver-historico-mural') verHistoricoMural(el.getAttribute('data-id'));
+  else if (action === 'remover-mural') removerAvisoMural(el.getAttribute('data-id'));
   else if (action === 'toggle-topicos') { state.muralFormComTopicos = !state.muralFormComTopicos; if (state.muralFormComTopicos && !state.muralFormPassos.length) state.muralFormPassos.push({ data: '', texto: '' }); render(); }
   else if (action === 'audiencia-todos') { state.muralFormAudienciaTodos = true; render(); }
   else if (action === 'audiencia-mescla') { state.muralFormAudienciaTodos = false; render(); }
@@ -1464,13 +1740,23 @@ document.addEventListener('input', function (e) {
   else if (id === 'faq-categoria-nova-input') state.faqFormCategoriaNova = e.target.value;
   else if (id === 'faq-pergunta-input') state.faqFormPergunta = e.target.value;
   else if (id === 'faq-resposta-input') state.faqFormResposta = e.target.value;
-  else if (id === 'compose-input') state.composeText = e.target.value;
+  else if (id === 'compose-input') { state.composeText = e.target.value; if (state.composeCooldownOk) { state.composeCooldownOk = false; render(); } }
   else if (id === 'mural-titulo-input') state.muralFormTitulo = e.target.value;
   else if (id === 'mural-texto-input') state.muralFormTexto = e.target.value;
   else if (id === 'mural-topicos-titulo-input') state.muralFormTopicosTitulo = e.target.value;
   else if (id === 'new-email-input') state.newEmail = e.target.value;
   else if (id === 'new-name-input') state.newName = e.target.value;
   else if (id === 'new-funcao-input') state.newFuncao = e.target.value;
+  else if (id === 'new-cpf-input') { state.newCpf = maskCPF(e.target.value); aplicarMascara(e.target, state.newCpf); }
+  else if (id === 'new-titulo-input') { state.newTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.newTitulo); }
+  else if (id === 'new-nascimento-input') { state.newNascimento = maskData(e.target.value); aplicarMascara(e.target, state.newNascimento); }
+  else if (id === 'new-escola-input') state.newEscola = e.target.value;
+  else if (id === 'new-secao-input') state.newSecao = e.target.value;
+  else if (id === 'edit-nome-input') state.editNome = e.target.value;
+  else if (id === 'edit-funcao-input') state.editFuncao = e.target.value;
+  else if (id === 'edit-escola-input') state.editEscola = e.target.value;
+  else if (id === 'edit-secao-input') state.editSecao = e.target.value;
+  else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
   else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
@@ -1483,7 +1769,9 @@ document.addEventListener('keydown', function (e) {
   else if (e.target.id === 'verif-codigo-input') confirmarVerificacaoEmail();
 });
 document.addEventListener('change', function (e) {
-  if (e.target.id === 'new-group-select') state.newGroup = e.target.value;
+  if (e.target.id === 'new-local-tipo-select') { state.newLocalTipo = e.target.value; render(); }
+  else if (e.target.id === 'edit-local-tipo-select') { state.editLocalTipo = e.target.value; render(); }
+  else if (e.target.id === 'import-file-input') { if (e.target.files && e.target.files[0]) processarArquivoImport(e.target.files[0]); }
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
