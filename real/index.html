@@ -67,6 +67,10 @@
   .group-icon { width: 40px; height: 40px; border-radius: 9px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
   .group-name { font-size: 14px; font-weight: 700; color: var(--navy); }
   .group-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group-card-folder { background: #F2ECE0; }
+  .group-subgroup { padding-left: 16px; border-left: 2px solid var(--border); margin: -4px 0 10px 20px; }
+  .group-card-sub { padding: 10px 13px; margin-bottom: 8px; }
+  .group-card-sub .group-icon { width: 32px; height: 32px; }
   .group-meta { text-align: right; flex: 0 0 auto; }
   .group-count { font-size: 11.5px; font-weight: 600; color: #4A473E; }
   .unread-dot { margin-top: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-left: auto; }
@@ -223,7 +227,8 @@ var ICON_STYLE = {
   geral: { icon: 'home', bg: '#1F3A63' },
   funcao: { icon: 'building', bg: '#3E5A85' },
   secao: { icon: 'ballot', bg: '#4E6E4E' },
-  escola: { icon: 'school', bg: '#7A4E3E' }
+  escola: { icon: 'school', bg: '#7A4E3E' },
+  escola_geral: { icon: 'home', bg: '#B08A3E' }
 };
 var ICON_OVERRIDE = { operadores: { icon: 'broadcast', bg: '#6E5A2E' } };
 function iconStyleFor(grupo) { return ICON_OVERRIDE[grupo.slug] || ICON_STYLE[grupo.tipo] || ICON_STYLE.funcao; }
@@ -304,7 +309,7 @@ function fmtHora(iso) {
 var state = {
   screen: 'loading',
   session: null, perfil: null,
-  myGroups: [],
+  myGroups: [], expandedEscolaId: null,
   activeGroupId: null, activeGroupMeta: null,
   threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false,
   muralPosts: [], reviewQueue: [],
@@ -417,12 +422,12 @@ async function loadMyGroups() {
     // moderador (Rita/Fernanda/desenvolvedor) enxerga todos os grupos pra
     // acompanhar tudo, mesmo sem ser membro formal de cada um — condiz com
     // a RLS de mensagens, que já libera leitura irrestrita pra moderador.
-    var { data: todos, error: todosErr } = await sb.from('grupos').select('id,slug,nome,descricao,tipo').order('nome');
+    var { data: todos, error: todosErr } = await sb.from('grupos').select('id,slug,nome,descricao,tipo,escola_id').order('nome');
     if (todosErr) { state.banner = todosErr.message; return; }
     state.myGroups = todos || [];
     return;
   }
-  var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo)').eq('perfil_id', state.session.user.id);
+  var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo,escola_id)').eq('perfil_id', state.session.user.id);
   if (error) { state.banner = error.message; return; }
   state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean);
 }
@@ -849,15 +854,57 @@ function renderMural() {
   return html;
 }
 
+function groupCardHtml(g, opts) {
+  opts = opts || {};
+  var st = iconStyleFor(g);
+  var nome = opts.rotulo || g.nome;
+  return '<button class="group-card' + (opts.sub ? ' group-card-sub' : '') + '" data-action="open-group" data-group="' + g.id + '">' +
+    '<div class="group-icon" style="background:' + st.bg + ';">' + icon(st.icon, 19, '#F7F5F0') + '</div>' +
+    '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
+    icon('chevRight', 15, '#C6BFAE') + '</button>';
+}
+
+function renderGruposModerador() {
+  var html = '';
+  var bySlug = {};
+  state.myGroups.forEach(function (g) { bySlug[g.slug] = g; });
+  ['geral', 'operadores', 'administradores'].forEach(function (slug) {
+    if (bySlug[slug]) html += groupCardHtml(bySlug[slug]);
+  });
+  var escolas = state.myGroups.filter(function (g) { return g.tipo === 'escola'; })
+    .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+  escolas.forEach(function (esc1) {
+    var aberta = state.expandedEscolaId === esc1.id;
+    html += '<button class="group-card group-card-folder" data-action="toggle-escola" data-id="' + esc1.id + '">' +
+      '<div class="group-icon" style="background:' + iconStyleFor(esc1).bg + ';">' + icon('school', 19, '#F7F5F0') + '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(esc1.nome) + '</div></div>' +
+      icon(aberta ? 'arrowUp' : 'chev', 15, '#C6BFAE') + '</button>';
+    if (aberta) {
+      var geralDaEscola = state.myGroups.filter(function (g) { return g.tipo === 'escola_geral' && g.escola_id === esc1.id; })[0];
+      var secoes = state.myGroups.filter(function (g) { return g.tipo === 'secao' && g.escola_id === esc1.id; })
+        .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+      html += '<div class="group-subgroup">';
+      if (geralDaEscola) html += groupCardHtml(geralDaEscola, { sub: true });
+      html += groupCardHtml(esc1, { sub: true, rotulo: 'Administradores' });
+      secoes.forEach(function (s) { html += groupCardHtml(s, { sub: true }); });
+      html += '</div>';
+    }
+  });
+  return html;
+}
+
 function renderGrupos() {
   var html = '<div class="eyebrow">Meus grupos</div>';
-  state.myGroups.forEach(function (g) {
-    var st = iconStyleFor(g);
-    html += '<button class="group-card" data-action="open-group" data-group="' + g.id + '">' +
-      '<div class="group-icon" style="background:' + st.bg + ';">' + icon(st.icon, 19, '#F7F5F0') + '</div>' +
-      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(g.nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
-      icon('chevRight', 15, '#C6BFAE') + '</button>';
-  });
+  if (state.perfil.is_moderador) {
+    html += renderGruposModerador();
+  } else {
+    var ordenados = state.myGroups.slice().sort(function (a, b) {
+      if (a.slug === 'geral') return -1;
+      if (b.slug === 'geral') return 1;
+      return 0;
+    });
+    ordenados.forEach(function (g) { html += groupCardHtml(g); });
+  }
   if (!state.myGroups.length) html += '<div class="hint">Você ainda não está em nenhum grupo. Fale com o Cartório Eleitoral.</div>';
   else html += '<div class="hint">Você faz parte destes grupos conforme sua convocação no TRE-PE.</div>';
   return html;
@@ -1070,6 +1117,11 @@ document.addEventListener('click', function (e) {
   else if (action === 'nav-faq') go('faq');
   else if (action === 'nav-perfil') go('perfil');
   else if (action === 'back-to-grupos') go('grupos');
+  else if (action === 'toggle-escola') {
+    var id = el.getAttribute('data-id');
+    state.expandedEscolaId = state.expandedEscolaId === id ? null : id;
+    render();
+  }
   else if (action === 'open-group') {
     var g = state.myGroups.find(function (x) { return x.id === el.getAttribute('data-group'); });
     if (g) loadThread(g);
