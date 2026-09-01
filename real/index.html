@@ -143,9 +143,21 @@
   .nav-btn.active .nav-label { font-weight: 700; }
 
   .message-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px; margin-bottom: 10px; }
-  .message-card.grouped { margin-top: -6px; padding-top: 7px; }
-  .message-card.message-informe { background: #FBF5E8; border: 1px solid #E4CA8B; }
+  .message-card.message-informe { background: #FBF5E8; border: 1px solid #E4CA8B; margin-bottom: 8px; }
   .grouped-row { min-height: 12px; margin-bottom: 4px; }
+  .msg-row { display: flex; margin-bottom: 2px; }
+  .msg-row.own { justify-content: flex-end; }
+  .msg-row.other { justify-content: flex-start; }
+  .msg-row.first { margin-top: 8px; }
+  .msg-bubble { max-width: 80%; padding: 6px 9px 4px; border-radius: 9px; }
+  .msg-bubble.own { background: #EAF1EC; border-top-right-radius: 3px; }
+  .msg-bubble.own.first { border-top-right-radius: 9px; }
+  .msg-bubble.other { background: var(--card); border: 1px solid var(--border); border-top-left-radius: 3px; }
+  .msg-bubble.other.first { border-top-left-radius: 9px; }
+  .msg-author-label { font-size: 11.5px; font-weight: 700; margin-bottom: 1px; }
+  .msg-text { font-size: 13.5px; line-height: 1.38; color: #2B2A25; white-space: pre-line; overflow-wrap: anywhere; }
+  .msg-meta { float: right; display: flex; align-items: center; gap: 4px; margin: 3px 0 -2px 8px; }
+  .msg-time { font-size: 10px; color: #9B9484; }
 
   .mural-fanout { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 11px 12px; margin-bottom: 16px; }
   .mural-fanout-title { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: #9B7A2E; margin-bottom: 7px; letter-spacing: .01em; }
@@ -229,6 +241,8 @@ var ICONS = {
   logout: '<path d="M8 4H5.5A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8M13 13.5L17 10L13 6.5M17 10H7.5"/>',
   arrowUp: '<path d="M5 12.5L10 7.5L15 12.5"/>',
   check: '<path d="M4 10.5L8 14.5L16 5.5"/>',
+  mail: '<rect x="3" y="5" width="14" height="10" rx="1.5"/><path d="M4 6.5l6 4.5 6-4.5"/>',
+  whatsapp: '<path d="M10 3a7 7 0 00-6 10.6L3 17l3.5-1a7 7 0 103.5-13z"/><path d="M7 8.5c.3 2.5 2 4.2 4.5 4.5"/>',
   edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
   clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>'
 };
@@ -300,6 +314,7 @@ var state = {
   showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [],
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
+  listaEspera: [], listaEsperaEnviando: null,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newGroup: '',
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
@@ -709,7 +724,7 @@ async function loadPainel() {
   if (!state.newGroup && grupos && grupos.length) state.newGroup = grupos.find(function (g) { return g.slug !== 'geral'; }).slug;
   var { data: config } = await sb.from('configuracao').select('valor').eq('chave', 'geral_intervalo_segundos').maybeSingle();
   state.configGeralIntervalo = config ? config.valor : '60';
-  await loadPainelMembers();
+  await Promise.all([loadPainelMembers(), loadListaEspera()]);
 }
 
 async function salvarConfigGeralIntervalo() {
@@ -722,7 +737,7 @@ async function salvarConfigGeralIntervalo() {
   render();
 }
 async function loadPainelMembers() {
-  var q = sb.from('memberships').select('perfil_id, grupo_id, papel, perfis(nome_completo, funcao), grupos(nome, slug)');
+  var q = sb.from('memberships').select('perfil_id, grupo_id, papel, perfis(nome_completo, funcao, email_verificado), grupos(nome, slug)');
   if (state.painelFilter !== 'todos') {
     var g = state.allGroups.find(function (x) { return x.slug === state.painelFilter; });
     if (g) q = q.eq('grupo_id', g.id);
@@ -731,6 +746,35 @@ async function loadPainelMembers() {
   state.painelMembers = data || [];
   render();
 }
+async function loadListaEspera() {
+  var { data } = await sb.from('perfis').select('id, nome_completo').eq('email_verificado', false).eq('ativo', true).order('nome_completo');
+  state.listaEspera = data || [];
+  render();
+}
+
+async function reenviarParaConvocado(perfilId, canal) {
+  state.listaEsperaEnviando = perfilId + ':' + canal; render();
+  try {
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      body: JSON.stringify({ reenviar_para: perfilId, canal: canal })
+    });
+    var json = await resp.json();
+    state.listaEsperaEnviando = null;
+    if (!resp.ok) { state.banner = json.error || 'Não foi possível enviar agora.'; render(); return; }
+    if (canal === 'whatsapp') {
+      var texto = 'Olá, ' + json.nome + '! Seu código de verificação do TRE-PE Apoio 2026 é: ' + json.codigo + '. Digite ele na aba Perfil do app pra liberar postar. Válido por 30 minutos — não compartilhe com mais ninguém.';
+      window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+    } else {
+      state.banner = 'Código enviado por e-mail pra ' + (json.email_mascarado || 'a pessoa') + '.';
+    }
+    render();
+  } catch (e) {
+    state.listaEsperaEnviando = null; state.banner = 'Sem conexão. Tente de novo.'; render();
+  }
+}
+
 async function removerIntegrante(perfilId, grupoId) {
   if (!confirm('Remover este integrante do grupo?')) return;
   await sb.from('memberships').delete().eq('perfil_id', perfilId).eq('grupo_id', grupoId);
@@ -996,34 +1040,49 @@ function renderThread() {
   }
   var prevAuthor = null;
   state.threadMessages.forEach(function (m) {
-    var authorName = nomeExibir(m._autor) + (m._autor.id === state.session.user.id ? ' (você)' : '');
+    var souEu = m._autor.id === state.session.user.id;
+    var authorName = nomeExibir(m._autor);
     var sameAsPrev = m.autor_id === prevAuthor && !m.eh_informe;
     var authorColor = m._autor.is_moderador ? '#C79A3D' : '#16294B';
-    html += '<div class="message-card' + (sameAsPrev ? ' grouped' : '') + (m.eh_informe ? ' message-informe' : '') + '">';
+
     if (m.eh_informe) {
-      html += '<div class="pin-tag" style="margin-bottom:4px;">' + icon('pin', 12, 'none', '#C79A3D') + '<span class="pin-label">Informe do Cartório</span></div>';
+      html += '<div class="message-card message-informe"><div class="pin-tag" style="margin-bottom:4px;">' + icon('pin', 12, 'none', '#C79A3D') + '<span class="pin-label">Informe do Cartório</span>' +
+        '<span style="font-size:10.5px; color:#9B9484; font-weight:400; margin-left:auto;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
+      if (m.removida_em) {
+        html += '<div class="msg-removed">Mensagem removida pela moderação.</div>';
+      } else {
+        html += '<div class="post-text">' + esc(m.texto) + '</div>';
+        if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
+        if (m.exige_confirmacao) {
+          var confirmadoInf = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
+          html += confirmadoInf
+            ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Leitura confirmada</div>'
+            : '<button class="btn-approve" style="margin-top:8px; width:100%;" data-action="confirmar-leitura-mensagem" data-id="' + m.id + '">Confirmar leitura</button>';
+        }
+      }
+      html += '</div>';
+      prevAuthor = m.autor_id;
+      return;
     }
-    if (sameAsPrev) {
-      html += '<div class="pin-row grouped-row"><div>' + (m.fixado ? icon('pin', 12, 'none', '#C79A3D') : '') + '</div><span style="font-size:10.5px; color:#9B9484;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
-    } else {
-      html += '<div class="pin-row"><div class="pin-tag">' + (m.fixado ? icon('pin', 12, 'none', '#C79A3D') : '') + '<span style="font-size:12px; font-weight:700; color:' + authorColor + ';">' + esc(authorName) + '</span></div>' +
-        '<span style="font-size:10.5px; color:#9B9484;">' + esc(fmtHora(m.criado_em)) + '</span></div>';
-    }
+
+    html += '<div class="msg-row ' + (souEu ? 'own' : 'other') + '">' +
+      '<div class="msg-bubble ' + (souEu ? 'own' : 'other') + (sameAsPrev ? '' : ' first') + '">';
+    if (!sameAsPrev && !souEu) html += '<div class="msg-author-label" style="color:' + authorColor + ';">' + esc(authorName) + '</div>';
     if (m.removida_em) {
       html += '<div class="msg-removed">Mensagem removida pela moderação.</div>';
     } else {
-      html += '<div class="post-text">' + esc(m.texto) + '</div>';
+      html += '<div class="msg-text">' + esc(m.texto) +
+        '<span class="msg-meta">' + (m.fixado ? icon('pin', 11, 'none', '#C79A3D') : '') + '<span class="msg-time">' + esc(fmtHora(m.criado_em)) + '</span></span>' +
+        '<span style="clear:both; display:block;"></span></div>';
       if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
       if (m.exige_confirmacao) {
         var confirmado = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
-        if (confirmado) {
-          html += '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Leitura confirmada</div>';
-        } else {
-          html += '<button class="btn-approve" style="margin-top:8px; width:100%;" data-action="confirmar-leitura-mensagem" data-id="' + m.id + '">Confirmar leitura</button>';
-        }
+        html += confirmado
+          ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:12px; margin-top:6px;">' + icon('check', 15, '#3E6E4E') + ' Leitura confirmada</div>'
+          : '<button class="btn-approve" style="margin-top:6px; width:100%;" data-action="confirmar-leitura-mensagem" data-id="' + m.id + '">Confirmar leitura</button>';
       }
     }
-    html += '</div>';
+    html += '</div></div>';
     prevAuthor = m.autor_id;
   });
   if (!state.threadMessages.length) html += '<div class="hint">Nenhuma mensagem ainda neste grupo.</div>';
@@ -1229,6 +1288,22 @@ function renderPainel() {
     '<button class="btn-primary" style="flex:0 0 auto; padding:9px 16px;" data-action="salvar-config-geral">Salvar</button></div>' +
     (state.configGeralSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Salvo — vale ' + esc(state.configGeralIntervalo) + 's</div>' : '') +
     '</div>';
+  html += '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Lista de espera de autorização (' + state.listaEspera.length + ')</div>' +
+    '<div class="hint" style="margin:0 2px 10px;">Quem ainda não confirmou o código de e-mail. Manda de novo por e-mail, ou por WhatsApp (abre seu WhatsApp com o texto pronto — você escolhe o contato certo).</div>';
+  if (!state.listaEspera.length) {
+    html += '<div class="hint">Ninguém esperando — todo mundo já confirmou.</div>';
+  } else {
+    state.listaEspera.forEach(function (p) {
+      var enviandoEmail = state.listaEsperaEnviando === p.id + ':email';
+      var enviandoWpp = state.listaEsperaEnviando === p.id + ':whatsapp';
+      html += '<div class="painel-member" style="align-items:center;">' +
+        '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(p.nome_completo) + '</div></div>' +
+        '<button class="icon-btn" title="Enviar código por e-mail" style="margin-right:6px;" data-action="reenviar-espera-email" data-id="' + p.id + '" ' + (enviandoEmail ? 'disabled' : '') + '>' + icon('mail', 15) + '</button>' +
+        '<button class="icon-btn" title="Enviar código por WhatsApp" data-action="reenviar-espera-whatsapp" data-id="' + p.id + '" ' + (enviandoWpp ? 'disabled' : '') + '>' + icon('whatsapp', 15, '#3E6E4E') + '</button>' +
+        '</div>';
+    });
+  }
+  html += '</div>';
   var filters = [{ id: 'todos', label: 'Todos' }].concat(state.allGroups.map(function (g) { return { id: g.slug, label: g.nome }; }));
   html += '<div class="filter-row">';
   filters.forEach(function (f) { html += '<button class="filter-chip' + (state.painelFilter === f.id ? ' active' : '') + '" data-action="painel-filter" data-filter="' + f.id + '">' + esc(f.label) + '</button>'; });
@@ -1332,6 +1407,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'send-message') sendMessage();
   else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
   else if (action === 'remove-member' || action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
+  else if (action === 'verificar-manualmente') verificarManualmente(el.getAttribute('data-id'), el.getAttribute('data-nome'));
   else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
@@ -1366,6 +1442,8 @@ document.addEventListener('click', function (e) {
   else if (action === 'toggle-membros-thread') { state.threadMembersExpanded = !state.threadMembersExpanded; render(); }
   else if (action === 'painel-filter') { state.painelFilter = el.getAttribute('data-filter'); loadPainelMembers(); }
   else if (action === 'salvar-config-geral') salvarConfigGeralIntervalo();
+  else if (action === 'reenviar-espera-email') reenviarParaConvocado(el.getAttribute('data-id'), 'email');
+  else if (action === 'reenviar-espera-whatsapp') reenviarParaConvocado(el.getAttribute('data-id'), 'whatsapp');
   else if (action === 'abrir-add') { state.showAddForm = true; render(); }
   else if (action === 'cancelar-add') { state.showAddForm = false; render(); }
   else if (action === 'confirmar-add') adicionarIntegrante();
