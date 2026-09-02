@@ -407,6 +407,7 @@ var state = {
 };
 
 var threadChannel = null, muralChannel = null;
+var logoutFoiPedidoPelaPessoa = false;
 
 // ================= LOCAL-FIRST: cache local + fila de envio =================
 // Leitura: cada tela mostra o que já tem salvo no aparelho NA HORA (sem
@@ -458,15 +459,15 @@ async function boot() {
   sb.auth.onAuthStateChange(function (event, session) {
     if (event === 'SIGNED_IN' && session && (!state.session || state.session.user.id !== session.user.id)) onSignedIn(session);
     else if (event === 'SIGNED_OUT') {
-      // pode ser um SIGNED_OUT "fantasma" — um token velho de uma sessão
-      // anterior (ex.: outra aba anônima) falhando ao tentar se renovar
-      // sozinho em paralelo a um login novo que acabou de dar certo. Confere
-      // de verdade antes de derrubar tudo — se ainda tem sessão válida, era
-      // falso alarme, ignora (login recente continua valendo).
-      sb.auth.getSession().then(function (r) {
-        if (r.data.session) return;
-        state.session = null; state.perfil = null; state.screen = 'login'; render();
-      });
+      // um SIGNED_OUT automático (token velho de sessão anterior falhando
+      // ao renovar sozinho, corrida entre abas) tava derrubando login válido
+      // sem avisar, mesmo com a checagem de getSession() — só aceita esse
+      // evento quando a PESSOA mesma pediu (logout()/encerrarSessaoForcado()
+      // ligam essa bandeira antes de chamar signOut()); qualquer outro
+      // SIGNED_OUT "espontâneo" é ignorado.
+      if (!logoutFoiPedidoPelaPessoa) return;
+      logoutFoiPedidoPelaPessoa = false;
+      state.session = null; state.perfil = null; state.screen = 'login'; render();
     }
   });
 }
@@ -548,6 +549,7 @@ async function solicitarCodigo() {
 }
 
 async function logout() {
+  logoutFoiPedidoPelaPessoa = true;
   lsLimparTudoDoUsuario();
   await sb.auth.signOut();
   state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
@@ -559,6 +561,7 @@ async function logout() {
 // Mais agressivo que o logout comum: limpa TODO o cache local do app
 // (qualquer usuário, não só o da sessão atual — que pode estar quebrada).
 async function encerrarSessaoForcado() {
+  logoutFoiPedidoPelaPessoa = true;
   try {
     Object.keys(localStorage).filter(function (k) { return k.indexOf('tre2026:') === 0; }).forEach(function (k) { localStorage.removeItem(k); });
   } catch (e) {}
