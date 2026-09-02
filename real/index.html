@@ -496,6 +496,14 @@ async function onSignedIn(session) {
     await sb.auth.signOut();
     return;
   }
+  // email_verificado da linha de perfis é "já verificou alguma vez" (histórico) —
+  // o que realmente libera postar é a SESSÃO atual estar confirmada
+  // (aparelho novo tem que confirmar de novo, mesmo a conta já tendo
+  // verificado antes em outro aparelho). RPC roda a mesma checagem que a
+  // RLS de escrita usa de verdade, então bate certinho com o que o servidor
+  // vai aceitar ou não.
+  var { data: sessaoVerificada } = await sb.rpc('email_verificado');
+  perfil.email_verificado = !!sessaoVerificada;
   state.perfil = perfil;
   lsSet('perfil', perfil);
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
