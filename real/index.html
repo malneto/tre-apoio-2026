@@ -390,7 +390,7 @@ var state = {
   expandedMuralId: null,
   editingMuralId: null, historicoMural: {}, expandedHistoricoId: null,
   faqSearch: '', activeFaqCat: null, expandedFaqId: null, faqPerguntas: [], faqLoaded: false,
-  showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
+  showFaqForm: false, editingFaqId: null, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [], painelBusca: '',
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
   listaEspera: [], listaEsperaEnviando: null, onboardingTotal: 0, onboardingEntraram: 0,
@@ -1126,15 +1126,34 @@ async function criarFaq() {
   if (!categoriaSlug || !categoriaNome) { state.banner = 'Escolha uma categoria ou digite o nome de uma nova.'; render(); return; }
   if (!pergunta || !resposta) { state.banner = 'Preencha a pergunta e a resposta.'; render(); return; }
   if (exigeVerificacao()) return;
-  var maiorOrdem = state.faqPerguntas.reduce(function (max, p) { return Math.max(max, p.ordem); }, 0);
-  var { error } = await sb.from('faq_perguntas').insert({
-    categoria_slug: categoriaSlug, categoria_nome: categoriaNome, pergunta: pergunta, resposta: resposta,
-    audiencia: state.faqFormAudiencia, criado_por: state.session.user.id, ordem: maiorOrdem + 1
-  });
+  var campos = { categoria_slug: categoriaSlug, categoria_nome: categoriaNome, pergunta: pergunta, resposta: resposta, audiencia: state.faqFormAudiencia };
+  var error;
+  if (state.editingFaqId) {
+    var res = await sb.from('faq_perguntas').update(campos).eq('id', state.editingFaqId);
+    error = res.error;
+  } else {
+    var maiorOrdem = state.faqPerguntas.reduce(function (max, p) { return Math.max(max, p.ordem); }, 0);
+    var novo = Object.assign({ criado_por: state.session.user.id, ordem: maiorOrdem + 1 }, campos);
+    var res2 = await sb.from('faq_perguntas').insert(novo);
+    error = res2.error;
+  }
   if (error) { state.banner = error.message; render(); return; }
-  state.showFaqForm = false; state.faqFormCategoria = ''; state.faqFormCategoriaNova = '';
+  state.showFaqForm = false; state.editingFaqId = null; state.faqFormCategoria = ''; state.faqFormCategoriaNova = '';
   state.faqFormPergunta = ''; state.faqFormResposta = ''; state.faqFormAudiencia = 'todos';
   await loadFaq();
+}
+
+function editarFaq(id) {
+  var item = state.faqPerguntas.filter(function (p) { return p.id === id; })[0];
+  if (!item) return;
+  state.showFaqForm = true;
+  state.editingFaqId = id;
+  state.faqFormCategoria = item.categoria_slug;
+  state.faqFormCategoriaNova = '';
+  state.faqFormPergunta = item.pergunta || '';
+  state.faqFormResposta = item.resposta || '';
+  state.faqFormAudiencia = item.audiencia || 'todos';
+  render();
 }
 
 async function removerFaq(id) {
@@ -1785,7 +1804,7 @@ function renderFaqForm() {
   if (!state.perfil.is_moderador) return '';
   if (!state.showFaqForm) return '<button class="add-dashed" data-action="abrir-form-faq" style="margin-bottom:12px;">' + icon('plus', 15, 'none', '#C79A3D') + ' Nova pergunta no FAQ</button>';
   var cats = categoriasFaq();
-  var html = '<div class="add-form" style="margin-bottom:12px;"><div class="add-form-title">Nova pergunta no FAQ</div>';
+  var html = '<div class="add-form" style="margin-bottom:12px;"><div class="add-form-title">' + (state.editingFaqId ? 'Editar pergunta do FAQ' : 'Nova pergunta no FAQ') + '</div>';
   html += '<select id="faq-categoria-select" style="margin-bottom:8px;"><option value="">Escolha uma categoria…</option>';
   cats.forEach(function (c) { html += '<option value="' + esc(c.slug) + '"' + (state.faqFormCategoria === c.slug ? ' selected' : '') + '>' + esc(c.nome) + '</option>'; });
   html += '</select>';
@@ -1797,7 +1816,7 @@ function renderFaqForm() {
     html += '<button class="filter-chip' + (state.faqFormAudiencia === opt[0] ? ' active' : '') + '" data-action="faq-audiencia" data-aud="' + opt[0] + '">' + opt[1] + '</button>';
   });
   html += '</div>';
-  html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-faq">Adicionar</button><button class="btn-secondary" data-action="cancelar-faq">Cancelar</button></div></div>';
+  html += '<div class="add-form-actions"><button class="btn-primary" data-action="enviar-faq">' + (state.editingFaqId ? 'Salvar edição' : 'Adicionar') + '</button><button class="btn-secondary" data-action="cancelar-faq">Cancelar</button></div></div>';
   return html;
 }
 
@@ -1839,7 +1858,12 @@ function renderFaqItem(item, comCategoria) {
     '<span style="flex:0 0 auto; margin-top:2px; display:flex; transform:' + (expanded ? 'rotate(180deg)' : 'rotate(0deg)') + ';">' + icon('chev', 14, '#8A8271') + '</span></button>';
   if (expanded) {
     html += '<div class="faq-a">' + esc(item.resposta) + '</div>';
-    if (state.perfil.is_moderador) html += '<button class="link-btn" style="color:#A24B3E; margin-top:8px;" data-action="remover-faq" data-id="' + item.id + '">' + icon('x', 13) + ' Remover</button>';
+    if (state.perfil.is_moderador) {
+      html += '<div style="display:flex; gap:16px; margin-top:8px;">' +
+        '<button class="link-btn" data-action="editar-faq" data-id="' + item.id + '">' + icon('edit', 13) + ' Editar</button>' +
+        '<button class="link-btn" style="color:#A24B3E;" data-action="remover-faq" data-id="' + item.id + '">' + icon('x', 13) + ' Remover</button>' +
+        '</div>';
+    }
   }
   html += '</div>'; return html;
 }
@@ -2256,10 +2280,11 @@ document.addEventListener('click', function (e) {
   else if (action === 'faq-back') { state.activeFaqCat = null; state.faqSearch = ''; render(); }
   else if (action === 'open-faq-cat') { state.activeFaqCat = el.getAttribute('data-cat'); render(); }
   else if (action === 'toggle-faq') toggleFaqItem(el.getAttribute('data-key'));
-  else if (action === 'abrir-form-faq') { state.showFaqForm = true; render(); }
-  else if (action === 'cancelar-faq') { state.showFaqForm = false; state.faqFormCategoria = ''; state.faqFormCategoriaNova = ''; state.faqFormPergunta = ''; state.faqFormResposta = ''; state.faqFormAudiencia = 'todos'; render(); }
+  else if (action === 'abrir-form-faq') { state.showFaqForm = true; state.editingFaqId = null; render(); }
+  else if (action === 'cancelar-faq') { state.showFaqForm = false; state.editingFaqId = null; state.faqFormCategoria = ''; state.faqFormCategoriaNova = ''; state.faqFormPergunta = ''; state.faqFormResposta = ''; state.faqFormAudiencia = 'todos'; render(); }
   else if (action === 'faq-audiencia') { state.faqFormAudiencia = el.getAttribute('data-aud'); render(); }
   else if (action === 'enviar-faq') criarFaq();
+  else if (action === 'editar-faq') editarFaq(el.getAttribute('data-id'));
   else if (action === 'remover-faq') removerFaq(el.getAttribute('data-id'));
   else if (action === 'abrir-form-mural') { state.showMuralForm = true; state.editingMuralId = null; render(); }
   else if (action === 'cancelar-mural') { state.showMuralForm = false; state.editingMuralId = null; state.muralFormTitulo = ''; state.muralFormTexto = ''; state.muralFormPassos = []; state.muralFormComTopicos = false; state.muralFormTopicosTitulo = ''; state.muralFormAudienciaTodos = true; state.muralFormAudiencia = []; state.muralFormExigeConfirmacao = false; render(); }
