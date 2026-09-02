@@ -2143,6 +2143,15 @@ window.addEventListener('offline', function () { state.online = false; render();
 
 boot();
 
+// Pede storage persistente — sem isso, o navegador (principalmente Android
+// com pouco espaço) pode apagar o cache local do app sozinho por baixo dos
+// panos quando precisar liberar espaço, mesmo o app sendo usado com
+// frequência. Não garante 100% (o navegador pode negar), mas reduz muito a
+// chance disso acontecer.
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().catch(function () {});
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
