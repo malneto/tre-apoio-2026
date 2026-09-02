@@ -599,12 +599,26 @@ function subscribeMural() {
 function mesclarPendentesNaThread(grupoId) {
   var pendentes = state.outbox.filter(function (o) { return o.tipo === 'mensagem' && o.grupoId === grupoId; });
   pendentes.forEach(function (o) {
-    var jaTem = state.threadMessages.some(function (m) { return m.id === o.tempId; });
-    if (jaTem) return;
+    var existente = state.threadMessages.find(function (m) { return m.id === o.tempId; });
+    if (existente) {
+      // já está na tela (injetada como "Enviando…" antes) — só atualiza o
+      // status pro que o item da fila tem agora, não duplica
+      existente._pendente = !o.falhou; existente._falhou = !!o.falhou; existente._erro = o.erro || null;
+      return;
+    }
+    // a mensagem pode já ter chegado com o ID DE VERDADE (um recarregamento
+    // completo — troca de tela, eco do Realtime — venceu a corrida contra a
+    // confirmação do próprio envio) — sem checar isso, injeta um fantasma
+    // "Enviando…" duplicado ao lado da mensagem real que já apareceu.
+    var jaChegouDeVerdade = state.threadMessages.some(function (m) {
+      return !m._pendente && m.autor_id === state.session.user.id && m.texto === o.texto && !!m.eh_informe === !!o.ehInforme &&
+        Math.abs(new Date(m.criado_em).getTime() - new Date(o.criado_em).getTime()) < 5 * 60 * 1000;
+    });
+    if (jaChegouDeVerdade) return;
     state.threadMessages.unshift({
       id: o.tempId, texto: o.texto, criado_em: o.criado_em, fixado: false, removida_em: null,
       autor_id: state.session.user.id, eh_informe: !!o.ehInforme, exige_confirmacao: !!o.exigeConfirmacao,
-      _autor: state.perfil, _pendente: true, _falhou: o.falhou || false, _erro: o.erro || null
+      _autor: state.perfil, _pendente: !o.falhou, _falhou: !!o.falhou, _erro: o.erro || null
     });
   });
 }
@@ -712,6 +726,25 @@ function enfileirarMensagem(grupoId, texto, ehInforme, exigeConfirmacao) {
   processarItemOutbox(item);
 }
 
+var COLUNAS_MENSAGEM = 'id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao';
+
+// Troca a entrada otimista (tempId) pela linha de verdade — tanto no cache
+// local do grupo quanto (se for o grupo aberto agora) na tela. Compartilhado
+// pelos dois jeitos de "sucesso": inseriu agora, ou já tinha inserido antes
+// (recuperado pelo cliente_id — ver processarItemOutbox).
+function confirmarMensagemNaThread(item, linhaReal) {
+  linhaReal._autor = state.perfil;
+  var cacheAtual = lsGet('thread:' + item.grupoId, []);
+  if (!cacheAtual.some(function (m) { return m.id === linhaReal.id; })) cacheAtual.unshift(linhaReal);
+  lsSet('thread:' + item.grupoId, cacheAtual);
+
+  if (item.grupoId === state.activeGroupId) {
+    var idx = state.threadMessages.findIndex(function (x) { return x.id === item.tempId || x.id === linhaReal.id; });
+    if (idx !== -1) state.threadMessages[idx] = linhaReal; else state.threadMessages.unshift(linhaReal);
+  }
+  render();
+}
+
 async function processarItemOutbox(item) {
   // trava contra processar o mesmo item 2x — o navegador pode disparar
   // 'online' mais de uma vez seguida (nativo + qualquer coisa que também
@@ -719,61 +752,67 @@ async function processarItemOutbox(item) {
   if (item._emProcessamento) return;
   item._emProcessamento = true;
   if (!navigator.onLine) { item._emProcessamento = false; return; } // fica na fila — flushOutbox tenta de novo quando o evento 'online' disparar
-  var colunas = 'id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao';
   var { data, error } = await sb.from('mensagens').insert({
     grupo_id: item.grupoId, autor_id: state.session.user.id, texto: item.texto,
-    eh_informe: item.ehInforme, exige_confirmacao: item.exigeConfirmacao
-  }).select(colunas).single();
+    eh_informe: item.ehInforme, exige_confirmacao: item.exigeConfirmacao, cliente_id: item.tempId
+  }).select(COLUNAS_MENSAGEM).single();
 
-  state.outbox = state.outbox.filter(function (o) { return o.tempId !== item.tempId; });
-  lsSet('outbox', state.outbox);
+  // Reenvio do MESMO item (ex.: a resposta do primeiro envio se perdeu — app
+  // fechado, rede caiu — e ele ficou na fila local achando que não tinha
+  // ido): o índice único de (autor_id, cliente_id) recusa a segunda linha.
+  // Não é erro de verdade — já foi enviada, só busca a linha que já existe
+  // em vez de reportar falha (e, principalmente, em vez de inserir de novo).
+  if (error && error.code === '23505') {
+    var recuperada = await sb.from('mensagens').select(COLUNAS_MENSAGEM).eq('autor_id', state.session.user.id).eq('cliente_id', item.tempId).maybeSingle();
+    if (recuperada.data) { data = recuperada.data; error = null; }
+  }
 
   if (error) {
     // recusa do servidor (flood, sem permissão etc.) — não é problema de rede,
-    // tentar de novo sozinho ia falhar igual. Marca só essa mensagem como não
-    // enviada, com opção de tentar de novo ou descartar.
-    if (item.grupoId === state.activeGroupId) {
-      var idxFalha = state.threadMessages.findIndex(function (x) { return x.id === item.tempId; });
-      if (idxFalha !== -1) {
-        state.threadMessages[idxFalha]._pendente = false;
-        state.threadMessages[idxFalha]._falhou = true;
-        state.threadMessages[idxFalha]._erro = error.message;
-      }
-      var m = (error.message || '').match(/Espere (\d+) segundos/);
-      if (m && !item.ehInforme) iniciarContagemRegressivaEnvio(parseInt(m[1], 10));
-    }
+    // tentar de novo sozinho ia falhar igual. Marca a mensagem como não
+    // enviada e MANTÉM na fila local (só marcada, sem tentar de novo sozinha)
+    // — precisa continuar existindo em algum lugar persistente, senão some
+    // sem deixar rastro assim que qualquer coisa recarregar a thread (outra
+    // pessoa postando, F5, trocar de tela e voltar).
+    item._emProcessamento = false;
+    item.falhou = true;
+    item.erro = error.message;
+    lsSet('outbox', state.outbox);
+    if (item.grupoId === state.activeGroupId) mesclarPendentesNaThread(item.grupoId);
+    var m = (error.message || '').match(/Espere (\d+) segundos/);
+    if (item.grupoId === state.activeGroupId && m && !item.ehInforme) iniciarContagemRegressivaEnvio(parseInt(m[1], 10));
     render();
     return;
   }
 
-  // atualiza o cache local desse grupo direto — não pode depender só do
-  // Realtime disparar um recarregamento completo pra isso acontecer (a
-  // pessoa pode ter saído da tela rápido, ou o evento demorar/falhar)
-  data._autor = state.perfil;
-  var cacheAtual = lsGet('thread:' + item.grupoId, []);
-  cacheAtual.unshift(data);
-  lsSet('thread:' + item.grupoId, cacheAtual);
-
-  if (item.grupoId === state.activeGroupId) {
-    var idx = state.threadMessages.findIndex(function (x) { return x.id === item.tempId; });
-    if (idx !== -1) state.threadMessages[idx] = data; else state.threadMessages.unshift(data);
-  }
-  render();
+  state.outbox = state.outbox.filter(function (o) { return o.tempId !== item.tempId; });
+  lsSet('outbox', state.outbox);
+  confirmarMensagemNaThread(item, data);
 }
 
 function flushOutbox() {
   if (!navigator.onLine || !state.outbox.length) return;
-  state.outbox.slice().forEach(function (item) { processarItemOutbox(item); });
+  // nunca reenvia sozinho um item já marcado como recusado — só o próprio
+  // usuário tocando "Tentar de novo" reenvia esses (ver retryMensagemFalha)
+  state.outbox.slice().filter(function (o) { return !o.falhou; }).forEach(function (item) { processarItemOutbox(item); });
 }
 
 function retryMensagemFalha(tempId) {
-  var idx = state.threadMessages.findIndex(function (m) { return m.id === tempId; });
-  if (idx === -1) return;
-  var msg = state.threadMessages[idx];
-  state.threadMessages.splice(idx, 1);
-  enfileirarMensagem(state.activeGroupId, msg.texto, msg.eh_informe, msg.exige_confirmacao);
+  if (state.composeCooldownRestante > 0) return; // ia falhar de novo na hora — o aviso de contagem já explica o motivo
+  var item = state.outbox.find(function (o) { return o.tempId === tempId; });
+  if (!item) return;
+  item.falhou = false; item.erro = null;
+  lsSet('outbox', state.outbox);
+  if (item.grupoId === state.activeGroupId) {
+    var idx = state.threadMessages.findIndex(function (m) { return m.id === tempId; });
+    if (idx !== -1) { state.threadMessages[idx]._falhou = false; state.threadMessages[idx]._pendente = true; }
+  }
+  render();
+  processarItemOutbox(item);
 }
 function descartarMensagemFalha(tempId) {
+  state.outbox = state.outbox.filter(function (o) { return o.tempId !== tempId; });
+  lsSet('outbox', state.outbox);
   var idx = state.threadMessages.findIndex(function (m) { return m.id === tempId; });
   if (idx !== -1) state.threadMessages.splice(idx, 1);
   render();
@@ -1466,8 +1505,9 @@ function renderStatusPendenteFalhou(m) {
     return '<div style="display:flex; align-items:center; gap:4px; margin-top:4px; font-size:10.5px; color:#9B9484;">' + icon('clock', 11, '#9B9484') + esc(texto) + '</div>';
   }
   if (m._falhou) {
+    var erroLegivel = /^(Espere \d+ segundos|Limite de mensagens atingido)/.test(m._erro || '') ? m._erro : 'não foi possível enviar, tente de novo';
     return '<div style="margin-top:4px;">' +
-      '<div style="font-size:11px; color:#A24B3E; font-weight:600;">Não enviada — ' + esc(m._erro || 'tente de novo') + '</div>' +
+      '<div style="font-size:11px; color:#A24B3E; font-weight:600;">Não enviada — ' + esc(erroLegivel) + '</div>' +
       '<div style="display:flex; gap:10px; margin-top:2px;">' +
       '<button class="link-btn" style="margin:0; font-size:11px;" data-action="retry-mensagem" data-tempid="' + esc(m.id) + '">Tentar de novo</button>' +
       '<button class="link-btn" style="margin:0; font-size:11px; color:#9B9484;" data-action="descartar-mensagem" data-tempid="' + esc(m.id) + '">Descartar</button>' +
@@ -1898,10 +1938,15 @@ function renderImportBlock() {
     html += '</div>';
     return html;
   }
-  html += '<div class="hint" style="margin:0 2px 10px;">Colunas do CSV (com cabeçalho): <code>email,nome_completo,funcao,subfuncao,cpf,titulo,data_nascimento,escola,secao</code>. ' +
-    '<code>funcao</code> é uma destas: ' + FUNCOES_TRE.map(function (f) { return '<code>' + esc(f) + '</code>'; }).join(', ') + '. ' +
-    '<code>subfuncao</code> só se a função for Administrador (' + SUBFUNCOES['Administrador'].map(function (s) { return '<code>' + esc(s) + '</code>'; }).join(' ou ') + ', opcional). ' +
-    '<code>escola</code>/<code>secao</code> só quando a função exigir (escola = nome oficial da planilha; seção = número, se já souber). Escolas e seções que ainda não existem são criadas automaticamente. JSON no mesmo formato (array de objetos) também funciona.</div>' +
+  html += '<div class="hint" style="margin:0 2px 8px;">Monte numa planilha (Excel, Google Sheets) com essas colunas na primeira linha, uma pessoa por linha, e salve/exporte como <strong>CSV</strong> (Arquivo → Fazer download → Valores separados por vírgula). Depois é só escolher o arquivo abaixo.</div>' +
+    '<div style="background:#F7F5F0; border:1px solid var(--border); border-radius:7px; padding:8px 10px; margin-bottom:10px; overflow-x:auto; font-family:monospace; font-size:11px; white-space:pre; color:#4A4536;">' +
+    esc('email,nome_completo,funcao,subfuncao,cpf,titulo,data_nascimento,escola,secao\n' +
+      'joao@escola.com,João da Silva,1º Mesário,,111.222.333-44,123456789012,15/03/1985,Escola Municipal Mário Melo,280\n' +
+      'ana@escola.com,Ana Souza,Administrador,Acessibilidade,222.333.444-55,234567890123,20/07/1990,UNIBRA,') +
+    '</div>' +
+    '<div class="hint" style="margin:0 2px 10px;"><code>funcao</code> tem que ser exatamente uma destas: ' + FUNCOES_TRE.join(', ') + '. ' +
+    '<code>subfuncao</code> só preenche se a função for Administrador (' + SUBFUNCOES['Administrador'].join(' ou ') + ') — pode deixar em branco. ' +
+    '<code>escola</code>/<code>secao</code> só preenche se a função exigir — deixe em branco pra TRE e Operador. Escola precisa ser o nome oficial da planilha do TRE; seção pode deixar o número que já souber, ou em branco. JSON (array de objetos, mesmos campos) também funciona.</div>' +
     '<input type="file" id="import-file-input" accept=".csv,.json,text/csv,application/json" ' + (state.importEnviando ? 'disabled' : '') + '>' +
     (state.importEnviando ? '<div class="hint" style="margin-top:8px;">Importando…</div>' : '');
   if (state.importResultado) {
