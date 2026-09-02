@@ -376,7 +376,7 @@ function fmtHora(iso) {
 var state = {
   screen: 'loading',
   session: null, perfil: null,
-  myGroups: [], expandedEscolaId: null,
+  myGroups: [], expandedEscolaId: null, gruposNaoLidos: [],
   activeGroupId: null, activeGroupMeta: null,
   threadMembers: [], threadMessages: [], composeText: '', composeError: '', souMembroComPostagem: false, threadMembersExpanded: false,
   composeCooldownRestante: 0, composeCooldownOk: false,
@@ -392,7 +392,7 @@ var state = {
   showFaqForm: false, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [], painelBusca: '',
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
-  listaEspera: [], listaEsperaEnviando: null,
+  listaEspera: [], listaEsperaEnviando: null, onboardingTotal: 0, onboardingEntraram: 0,
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   perfilFormChavePix: '', perfilChavePixSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
@@ -542,15 +542,26 @@ async function loadMyGroups() {
     // acompanhar tudo, mesmo sem ser membro formal de cada um — condiz com
     // a RLS de mensagens, que já libera leitura irrestrita pra moderador.
     var { data: todos, error: todosErr } = await sb.from('grupos').select('id,slug,nome,descricao,tipo,escola_id').order('nome');
-    if (todosErr) { if (!state.myGroups.length) state.banner = todosErr.message; return; }
-    state.myGroups = todos || [];
-    lsSet('myGroups', state.myGroups);
-    return;
+    if (todosErr) { if (!state.myGroups.length) state.banner = todosErr.message; }
+    else { state.myGroups = todos || []; lsSet('myGroups', state.myGroups); }
+  } else {
+    var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo,escola_id)').eq('perfil_id', state.session.user.id);
+    if (error) { if (!state.myGroups.length) state.banner = error.message; }
+    else { state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean); lsSet('myGroups', state.myGroups); }
   }
-  var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo,escola_id)').eq('perfil_id', state.session.user.id);
-  if (error) { if (!state.myGroups.length) state.banner = error.message; return; }
-  state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean);
-  lsSet('myGroups', state.myGroups);
+  await carregarNaoLidos();
+}
+
+async function carregarNaoLidos() {
+  var { data, error } = await sb.rpc('grupos_nao_lidos');
+  if (error) return;
+  state.gruposNaoLidos = (data || []).map(function (r) { return r.grupo_id; });
+}
+
+async function marcarGrupoComoVisto(grupoId) {
+  await sb.from('grupos_visto').upsert({ perfil_id: state.session.user.id, grupo_id: grupoId, visto_em: new Date().toISOString() }, { onConflict: 'perfil_id,grupo_id' });
+  var idx = state.gruposNaoLidos.indexOf(grupoId);
+  if (idx !== -1) { state.gruposNaoLidos.splice(idx, 1); render(); }
 }
 
 async function attachAutores(posts) {
@@ -643,6 +654,7 @@ async function loadThread(grupo) {
   state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
   state.screen = 'thread'; state.composeError = '';
   clearInterval(composeCooldownTimer); state.composeCooldownRestante = 0; state.composeCooldownOk = false;
+  marcarGrupoComoVisto(grupo.id);
 
   // mostra o que já tem salvo desse grupo na hora — só limpa/mostra "vazio"
   // se realmente não tiver nada em cache ainda (primeira vez abrindo)
@@ -1053,12 +1065,24 @@ async function loadPainel() {
   state.allGroups = lsGet('allGroups', state.allGroups);
   state.painelMembers = state.painelFilter === 'todos' ? lsGet('painelMembers', []) : [];
   state.listaEspera = lsGet('listaEspera', []);
+  var onboardingCache = lsGet('onboarding', null);
+  if (onboardingCache) { state.onboardingTotal = onboardingCache.total; state.onboardingEntraram = onboardingCache.entraram; }
   render();
   var { data: grupos } = await sb.from('grupos').select('*').order('nome');
   if (grupos) { state.allGroups = grupos; lsSet('allGroups', grupos); }
   var { data: config } = await sb.from('configuracao').select('valor').eq('chave', 'geral_intervalo_segundos').maybeSingle();
   state.configGeralIntervalo = config ? config.valor : '60';
-  await Promise.all([loadPainelMembers(), loadListaEspera()]);
+  await Promise.all([loadPainelMembers(), loadListaEspera(), loadOnboardingStats()]);
+}
+
+async function loadOnboardingStats() {
+  var { data, error } = await sb.from('perfis').select('id, primeiro_acesso_em').eq('ativo', true);
+  if (error) return;
+  var total = (data || []).length;
+  var entraram = (data || []).filter(function (p) { return p.primeiro_acesso_em; }).length;
+  state.onboardingTotal = total; state.onboardingEntraram = entraram;
+  lsSet('onboarding', { total: total, entraram: entraram });
+  render();
 }
 
 async function salvarConfigGeralIntervalo() {
@@ -1464,9 +1488,12 @@ function groupCardHtml(g, opts) {
   opts = opts || {};
   var st = iconStyleFor(g);
   var nome = opts.rotulo || g.nome;
+  var naoLida = state.gruposNaoLidos.indexOf(g.id) !== -1;
   return '<button class="group-card' + (opts.sub ? ' group-card-sub' : '') + '" data-action="open-group" data-group="' + g.id + '">' +
-    '<div class="group-icon" style="background:' + st.bg + ';">' + icon(st.icon, 19, '#F7F5F0') + '</div>' +
-    '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
+    '<div class="group-icon" style="background:' + st.bg + '; position:relative;">' + icon(st.icon, 19, '#F7F5F0') +
+    (naoLida ? '<span style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; border-radius:50%; background:#C79A3D; border:2px solid #fff;"></span>' : '') +
+    '</div>' +
+    '<div style="flex:1 1 auto; min-width:0;"><div class="group-name" style="' + (naoLida ? 'font-weight:700;' : '') + '">' + esc(nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
     icon('chevRight', 15, '#C6BFAE') + '</button>';
 }
 
@@ -1481,14 +1508,18 @@ function renderGruposModerador() {
     .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
   escolas.forEach(function (esc1) {
     var aberta = state.expandedEscolaId === esc1.id;
+    var geralDaEscola = state.myGroups.filter(function (g) { return g.tipo === 'escola_geral' && g.escola_id === esc1.id; })[0];
+    var secoes = state.myGroups.filter(function (g) { return g.tipo === 'secao' && g.escola_id === esc1.id; })
+      .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+    var idsDaPasta = [esc1.id].concat(geralDaEscola ? [geralDaEscola.id] : []).concat(secoes.map(function (s) { return s.id; }));
+    var pastaTemNaoLida = idsDaPasta.some(function (id) { return state.gruposNaoLidos.indexOf(id) !== -1; });
     html += '<button class="group-card group-card-folder" data-action="toggle-escola" data-id="' + esc1.id + '">' +
-      '<div class="group-icon" style="background:' + iconStyleFor(esc1).bg + ';">' + icon('school', 19, '#F7F5F0') + '</div>' +
-      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name">' + esc(esc1.nome) + '</div></div>' +
+      '<div class="group-icon" style="background:' + iconStyleFor(esc1).bg + '; position:relative;">' + icon('school', 19, '#F7F5F0') +
+      (pastaTemNaoLida ? '<span style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; border-radius:50%; background:#C79A3D; border:2px solid #fff;"></span>' : '') +
+      '</div>' +
+      '<div style="flex:1 1 auto; min-width:0;"><div class="group-name" style="' + (pastaTemNaoLida ? 'font-weight:700;' : '') + '">' + esc(esc1.nome) + '</div></div>' +
       icon(aberta ? 'arrowUp' : 'chev', 15, '#C6BFAE') + '</button>';
     if (aberta) {
-      var geralDaEscola = state.myGroups.filter(function (g) { return g.tipo === 'escola_geral' && g.escola_id === esc1.id; })[0];
-      var secoes = state.myGroups.filter(function (g) { return g.tipo === 'secao' && g.escola_id === esc1.id; })
-        .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
       html += '<div class="group-subgroup">';
       if (geralDaEscola) html += groupCardHtml(geralDaEscola, { sub: true });
       html += groupCardHtml(esc1, { sub: true, rotulo: 'Administradores' });
@@ -1820,6 +1851,15 @@ function renderPerfil() {
 
 function renderPainel() {
   var html = '';
+  var pct = state.onboardingTotal ? Math.round(100 * state.onboardingEntraram / state.onboardingTotal) : 0;
+  html += '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Onboarding</div>' +
+    '<div class="hint" style="margin:0 2px 10px;">Convocados que já entraram no app pelo menos uma vez (bateram os dados de acesso).</div>' +
+    '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">' +
+    '<div style="font-size:28px; font-weight:700; color:#16294B;">' + pct + '%</div>' +
+    '<div style="font-size:13px; color:#8A8271;">' + state.onboardingEntraram + ' de ' + state.onboardingTotal + ' convocados</div>' +
+    '</div>' +
+    '<div style="height:8px; border-radius:4px; background:#EFEAE0; overflow:hidden;"><div style="height:100%; width:' + pct + '%; background:#C79A3D;"></div></div>' +
+    '</div>';
   html += '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Configurações</div>' +
     '<div class="hint" style="margin:0 2px 8px;">Intervalo mínimo entre mensagens de uma mesma pessoa no grupo Geral (segundos). Geral é aberto pra todo mundo postar, esse limite evita flood.</div>' +
     '<div style="display:flex; gap:8px; align-items:center;">' +
