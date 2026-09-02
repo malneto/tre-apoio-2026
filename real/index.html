@@ -1973,11 +1973,30 @@ function renderBottomNav() {
   return '<div class="bottomnav">' + item('mural', 'nav-mural', 'home', 'Mural', pendentes > 0) + item('grupos', 'nav-grupos', 'ballot', 'Grupos') + item('faq', 'nav-faq', 'search', 'FAQ') + item('perfil', 'nav-perfil', 'school', 'Perfil') + '</div>';
 }
 
+// Guarda a posição de rolagem de cada tela — sem isso, voltar de uma
+// conversa (ou de qualquer tela) sempre jogava de volta pro topo, obrigando
+// a rolar tudo de novo pra achar onde estava (dói de verdade com dezenas de
+// grupos/escolas na lista do moderador). Só salva/restaura quando a tela
+// realmente MUDA — enquanto a pessoa está na mesma tela, não mexe na
+// rolagem dela (senão brigaria com o scroll manual a cada re-render, tipo
+// o do contador regressivo que roda a cada segundo).
+var scrollPorTela = {};
+var telaRenderizadaAnterior = null;
+
 function render() {
   var focus = null;
   var ae = document.activeElement;
   if (ae && ae.id && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) focus = { id: ae.id, start: ae.selectionStart, end: ae.selectionEnd };
   var app = document.getElementById('app');
+  // no celular (largura < 461px) quem rola é a JANELA — o `.shell` só tem
+  // min-height, cresce com o conteúdo; no desktop (media query) o `.shell`
+  // vira de altura fixa com overflow:hidden e aí quem rola é o `.scroll`
+  // interno. Cobre os dois: pega o que estiver realmente rolado.
+  var scrollAtual = window.scrollY || document.documentElement.scrollTop || 0;
+  var scrollInterno = app.querySelector('.scroll');
+  if (scrollInterno && scrollInterno.scrollTop > scrollAtual) scrollAtual = scrollInterno.scrollTop;
+  var trocouDeTela = state.screen !== telaRenderizadaAnterior;
+  if (trocouDeTela && telaRenderizadaAnterior) scrollPorTela[telaRenderizadaAnterior] = scrollAtual;
   var html;
   if (state.screen === 'loading') html = renderLoading();
   else if (state.screen === 'login') html = renderLogin();
@@ -1997,6 +2016,15 @@ function render() {
   if (focus) {
     var el = document.getElementById(focus.id);
     if (el) { el.focus(); if (el.setSelectionRange && (el.type === 'text' || el.type === 'email' || !el.type)) { try { el.setSelectionRange(focus.start, focus.end); } catch (e) {} } }
+  }
+  if (trocouDeTela) {
+    var alvo = scrollPorTela[state.screen] || 0;
+    if (alvo) {
+      window.scrollTo(0, alvo);
+      var scrollNovo = app.querySelector('.scroll');
+      if (scrollNovo) scrollNovo.scrollTop = alvo;
+    }
+    telaRenderizadaAnterior = state.screen;
   }
 }
 
