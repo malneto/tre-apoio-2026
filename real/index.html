@@ -490,7 +490,15 @@ async function onSignedIn(session) {
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
   state.perfilFormChavePix = perfil.chave_pix || '';
   state.screen = 'mural';
-  await Promise.all([loadMural(), loadMyGroups()]);
+  try {
+    await Promise.all([loadMural(), loadMyGroups()]);
+  } catch (e) {
+    // corrida rara: um token velho tentando renovar sozinho ao mesmo tempo
+    // (ex.: sessão anterior desta mesma aba anônima) pode derrubar
+    // state.session bem no meio desse carregamento — sem isso, a tela
+    // ficava travada "pensando" pra sempre, porque o render() nunca era
+    // alcançado. Mostra o que der pra mostrar e segue.
+  }
   render();
   flushOutbox();
 }
@@ -537,6 +545,7 @@ async function logout() {
 
 // ================= DADOS =================
 async function loadMyGroups() {
+  if (!state.session) return; // sessão pode ter caído por uma corrida de renovação de token — não quebra, só desiste quieto
   if (state.perfil.is_moderador) {
     // moderador (Rita/Fernanda/desenvolvedor) enxerga todos os grupos pra
     // acompanhar tudo, mesmo sem ser membro formal de cada um — condiz com
@@ -574,6 +583,7 @@ async function attachAutores(posts) {
 }
 
 async function loadMural() {
+  if (!state.session) return; // sessão pode ter caído por uma corrida de renovação de token — não quebra, só desiste quieto
   var vejoPendentes = state.perfil.is_moderador || state.perfil.is_revisor;
   var publicadosPromise = sb.from('mural_posts').select('*').eq('status', 'publicado').is('removida_em', null).order('fixado', { ascending: false }).order('ordem', { ascending: false }).order('criado_em', { ascending: false });
   var pendentesPromise = vejoPendentes
