@@ -406,7 +406,8 @@ var state = {
   outbox: [],
   banner: '',
   mostrarPassosInstalarIOS: false,
-  appRecemInstalado: false
+  appRecemInstalado: false,
+  diagnosticoTecnico: ''
 };
 
 var threadChannel = null, muralChannel = null;
@@ -567,6 +568,7 @@ async function onSignedIn(session) {
 }
 
 async function solicitarCodigo() {
+  state.diagnosticoTecnico = '';
   var cpf = state.loginCpf.trim(), titulo = state.loginTitulo.trim(), nome = state.loginNome.trim(), nascimento = state.loginNascimento.trim();
   if (!cpf || !titulo || !nome || !nascimento) { state.loginStatus = 'error:Preencha CPF, título, nome completo e data de nascimento.'; render(); return; }
   if (!state.loginAceite) { state.loginStatus = 'error:Marque o aceite do uso dos dados pra continuar.'; render(); return; }
@@ -1483,6 +1485,7 @@ function renderLoading() { return renderHeader() + '<div class="center-screen"><
 function renderLogin() {
   var statusHtml = '';
   if (state.loginStatus) { var parts = state.loginStatus.split(':'); statusHtml = '<div class="login-msg ' + parts[0] + '">' + esc(parts.slice(1).join(':')) + '</div>'; }
+  if (state.diagnosticoTecnico) statusHtml += '<div class="hint" style="margin-top:4px; word-break:break-word;">Detalhe técnico: ' + esc(state.diagnosticoTecnico) + '</div>';
   var bannerHtml = state.banner ? '<div class="banner-error" style="max-width:300px;">' + esc(state.banner) + '</div>' : '';
 
   return renderHeader() + '<div class="center-screen">' + bannerHtml +
@@ -1917,6 +1920,10 @@ async function sessaoMorreuVoltarParaLogin(motivo) {
   await logout();
   state.screen = 'login';
   state.loginStatus = 'error:Sua sessão expirou (às vezes acontece ao abrir o mesmo link em mais de um lugar). Entre de novo com seus dados.';
+  // motivo técnico visível na própria tela — pra quando não dá pra abrir o
+  // console (celular, por exemplo). Sai no próximo print sem precisar de
+  // DevTools nenhum.
+  state.diagnosticoTecnico = String(motivo || '');
   render();
 }
 
