@@ -393,7 +393,7 @@ var state = {
   showFaqForm: false, editingFaqId: null, faqFormCategoria: '', faqFormCategoriaNova: '', faqFormPergunta: '', faqFormResposta: '', faqFormAudiencia: 'todos',
   painelFilter: 'todos', allGroups: [], painelMembers: [], painelBusca: '',
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
-  listaEspera: [], listaEsperaEnviando: null, onboardingTotal: 0, onboardingEntraram: 0,
+  listaEspera: [], listaEsperaEnviando: null, onboardingTotal: 0, onboardingEntraram: 0, gruposOnboarding: {},
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
   perfilFormChavePix: '', perfilChavePixSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
@@ -1192,6 +1192,34 @@ async function loadOnboardingStats() {
   render();
 }
 
+// % de onboarding POR GRUPO (não só o geral do Painel) — pra moderador ver
+// de cara, na tela de Meus Grupos, qual escola/seção ainda tá devendo, sem
+// precisar entrar no Painel e filtrar grupo por grupo.
+async function loadGruposOnboarding() {
+  var cache = lsGet('gruposOnboarding', null);
+  if (cache) { state.gruposOnboarding = cache; render(); }
+  var { data, error } = await sb.from('memberships').select('grupo_id, perfis!inner(primeiro_acesso_em, ativo)').eq('perfis.ativo', true);
+  if (error) return;
+  var porGrupo = {};
+  (data || []).forEach(function (m) {
+    if (!porGrupo[m.grupo_id]) porGrupo[m.grupo_id] = { total: 0, entraram: 0 };
+    porGrupo[m.grupo_id].total++;
+    if (m.perfis.primeiro_acesso_em) porGrupo[m.grupo_id].entraram++;
+  });
+  state.gruposOnboarding = porGrupo;
+  lsSet('gruposOnboarding', porGrupo);
+  render();
+}
+function pctOnboardingGrupos(ids) {
+  var total = 0, entraram = 0;
+  ids.forEach(function (id) {
+    var st = state.gruposOnboarding[id];
+    if (st) { total += st.total; entraram += st.entraram; }
+  });
+  if (!total) return null;
+  return Math.round(100 * entraram / total);
+}
+
 async function salvarConfigGeralIntervalo() {
   var valor = parseInt(state.configGeralIntervaloForm, 10);
   if (!valor || valor < 0) { state.banner = 'Digite um número de segundos válido.'; render(); return; }
@@ -1594,16 +1622,22 @@ function renderMural() {
   return html;
 }
 
+function pctBadgeHtml(pct) {
+  if (pct === null) return '';
+  return '<div style="flex:0 0 auto; font-size:12.5px; font-weight:700; color:#2C6E8C; margin-right:2px;">' + pct + '%</div>';
+}
 function groupCardHtml(g, opts) {
   opts = opts || {};
   var st = iconStyleFor(g);
   var nome = opts.rotulo || g.nome;
   var naoLida = state.gruposNaoLidos.indexOf(g.id) !== -1;
+  var pct = pctOnboardingGrupos([g.id]);
   return '<button class="group-card' + (opts.sub ? ' group-card-sub' : '') + '" data-action="open-group" data-group="' + g.id + '">' +
     '<div class="group-icon" style="background:' + st.bg + '; position:relative;">' + icon(st.icon, 19, '#F7F5F0') +
     (naoLida ? '<span style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; border-radius:50%; background:#C79A3D; border:2px solid #fff;"></span>' : '') +
     '</div>' +
     '<div style="flex:1 1 auto; min-width:0;"><div class="group-name" style="' + (naoLida ? 'font-weight:700;' : '') + '">' + esc(nome) + '</div><div class="group-sub">' + esc(g.descricao || '') + '</div></div>' +
+    pctBadgeHtml(pct) +
     icon('chevRight', 15, '#C6BFAE') + '</button>';
 }
 
@@ -1623,11 +1657,13 @@ function renderGruposModerador() {
       .sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
     var idsDaPasta = [esc1.id].concat(geralDaEscola ? [geralDaEscola.id] : []).concat(secoes.map(function (s) { return s.id; }));
     var pastaTemNaoLida = idsDaPasta.some(function (id) { return state.gruposNaoLidos.indexOf(id) !== -1; });
+    var pctPasta = pctOnboardingGrupos(idsDaPasta);
     html += '<button class="group-card group-card-folder" data-action="toggle-escola" data-id="' + esc1.id + '">' +
       '<div class="group-icon" style="background:' + iconStyleFor(esc1).bg + '; position:relative;">' + icon('school', 19, '#F7F5F0') +
       (pastaTemNaoLida ? '<span style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; border-radius:50%; background:#C79A3D; border:2px solid #fff;"></span>' : '') +
       '</div>' +
       '<div style="flex:1 1 auto; min-width:0;"><div class="group-name" style="' + (pastaTemNaoLida ? 'font-weight:700;' : '') + '">' + esc(esc1.nome) + '</div></div>' +
+      pctBadgeHtml(pctPasta) +
       icon(aberta ? 'arrowUp' : 'chev', 15, '#C6BFAE') + '</button>';
     if (aberta) {
       html += '<div class="group-subgroup">';
@@ -2237,6 +2273,7 @@ function go(screen) {
   state.screen = screen; state.banner = '';
   if (screen === 'painel') loadPainel();
   else if (screen === 'faq' && !state.faqLoaded) loadFaq();
+  else if (screen === 'grupos' && state.perfil.is_moderador) loadGruposOnboarding();
   render();
 }
 
