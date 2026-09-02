@@ -532,8 +532,12 @@ async function onSignedIn(session) {
   var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, subfuncao, chave_pix, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
   if (error || !perfil) {
     if (perfilCache) return; // já está mostrando o que tem em cache — provável só falta de rede, não desloga à toa
-    state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
+    console.error('onSignedIn: select em perfis falhou/veio vazio, deslogando —', error);
+    logoutFoiPedidoPelaPessoa = true; // sem isso o onAuthStateChange ignora esse signOut de verdade e a tela fica num estado inconsistente
+    state.session = null; state.perfil = null; state.screen = 'login';
+    state.loginStatus = 'error:Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
     await sb.auth.signOut();
+    render();
     return;
   }
   // email_verificado da linha de perfis é "já verificou alguma vez" (histórico) —
@@ -1908,11 +1912,28 @@ function renderFaqItem(item, comCategoria) {
 // de refresh token detectado entre abas) não adianta mostrar erro na tela de
 // Perfil — a pessoa fica presa lá sem entender. Desloga e manda pra tela de
 // login já com um aviso claro.
-async function sessaoMorreuVoltarParaLogin() {
+async function sessaoMorreuVoltarParaLogin(motivo) {
+  console.error('Sessão encerrada — motivo:', motivo);
   await logout();
   state.screen = 'login';
   state.loginStatus = 'error:Sua sessão expirou (às vezes acontece ao abrir o mesmo link em mais de um lugar). Entre de novo com seus dados.';
   render();
+}
+
+// getSession() pode voltar sem sessão por uma corrida (ex.: um refresh
+// automático em segundo plano que terminou bem, mas um evento SIGNED_OUT
+// espontâneo — sempre ignorado pelo listener, ver boot() — já tinha limpado
+// o cliente por dentro um instante antes). Antes de desistir e deslogar de
+// vez, tenta uma renovação explícita — se o refresh token ainda for válido
+// no servidor, isso recupera a sessão sem incomodar ninguém.
+async function sessaoAtivaOuRecuperar() {
+  var { data } = await sb.auth.getSession();
+  if (data.session) return data.session;
+  console.warn('getSession() voltou sem sessão — tentando refreshSession() antes de desistir.');
+  var { data: renovada, error } = await sb.auth.refreshSession().catch(function (e) { return { data: null, error: e }; });
+  if (renovada && renovada.session) { console.warn('refreshSession() recuperou a sessão.'); return renovada.session; }
+  console.error('refreshSession() também falhou:', error);
+  return null;
 }
 
 async function confirmarVerificacaoEmail() {
@@ -1920,14 +1941,17 @@ async function confirmarVerificacaoEmail() {
   if (!codigo) return;
   state.verifSending = true; state.verifStatus = ''; render();
   try {
-    var { data: sessionData1 } = await sb.auth.getSession();
-    if (!sessionData1.session) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
+    var sessao1 = await sessaoAtivaOuRecuperar();
+    if (!sessao1) { state.verifSending = false; await sessaoMorreuVoltarParaLogin('getSession/refreshSession vazios (confirmar código)'); return; }
     var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData1.session.access_token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessao1.access_token },
       body: JSON.stringify({ codigo: codigo })
     });
-    if (resp.status === 401) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
+    if (resp.status === 401) {
+      var corpo1 = await resp.text().catch(function () { return '(sem corpo)'; });
+      state.verifSending = false; await sessaoMorreuVoltarParaLogin('401 do confirmar-verificacao (confirmar código): ' + corpo1); return;
+    }
     var json = await resp.json();
     state.verifSending = false;
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Código inválido.'); render(); return; }
@@ -1943,14 +1967,17 @@ async function confirmarVerificacaoEmail() {
 async function pedirNovoCodigoVerificacao() {
   state.verifSending = true; state.verifStatus = ''; render();
   try {
-    var { data: sessionData2 } = await sb.auth.getSession();
-    if (!sessionData2.session) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
+    var sessao2 = await sessaoAtivaOuRecuperar();
+    if (!sessao2) { state.verifSending = false; await sessaoMorreuVoltarParaLogin('getSession/refreshSession vazios (reenviar código)'); return; }
     var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData2.session.access_token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessao2.access_token },
       body: JSON.stringify({ reenviar: true })
     });
-    if (resp.status === 401) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
+    if (resp.status === 401) {
+      var corpo2 = await resp.text().catch(function () { return '(sem corpo)'; });
+      state.verifSending = false; await sessaoMorreuVoltarParaLogin('401 do confirmar-verificacao (reenviar código): ' + corpo2); return;
+    }
     var json = await resp.json();
     state.verifSending = false;
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Não foi possível reenviar agora.'); render(); return; }
