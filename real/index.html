@@ -615,11 +615,26 @@ function mesclarPendentesNaThread(grupoId) {
         Math.abs(new Date(m.criado_em).getTime() - new Date(o.criado_em).getTime()) < 5 * 60 * 1000;
     });
     if (jaChegouDeVerdade) return;
-    state.threadMessages.unshift({
+    // ordem cronológica (mais antiga em cima, mais nova embaixo, igual
+    // WhatsApp) — item novo/pendente sempre entra no FIM, nunca no início.
+    state.threadMessages.push({
       id: o.tempId, texto: o.texto, criado_em: o.criado_em, fixado: false, removida_em: null,
       autor_id: state.session.user.id, eh_informe: !!o.ehInforme, exige_confirmacao: !!o.exigeConfirmacao,
       _autor: state.perfil, _pendente: !o.falhou, _falhou: !!o.falhou, _erro: o.erro || null
     });
+  });
+}
+
+// Rola a conversa pro fim (mensagem mais recente) — chamado ao abrir um
+// grupo, ao mandar mensagem, e quando o teclado abre (foco no campo de
+// digitar), pra nunca ficar mostrando área em branco tipo a tela ficando
+// "presa" no meio quando o teclado empurra o layout.
+function rolarThreadParaBaixo() {
+  requestAnimationFrame(function () {
+    var alvo = document.body.scrollHeight;
+    window.scrollTo(0, alvo);
+    var scrollInterno = document.querySelector('.scroll');
+    if (scrollInterno) scrollInterno.scrollTop = scrollInterno.scrollHeight;
   });
 }
 
@@ -636,6 +651,7 @@ async function loadThread(grupo) {
   state.threadMembers = lsGet('threadMembers:' + grupo.id, []);
   mesclarPendentesNaThread(grupo.id);
   render();
+  rolarThreadParaBaixo();
 
   var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
   var membersPromise = state.perfil.is_moderador
@@ -651,6 +667,7 @@ async function loadThread(grupo) {
     (autores || []).forEach(function (a) { autorMap[a.id] = a; });
   }
   msgs.forEach(function (m) { m._autor = autorMap[m.autor_id] || { nome_completo: 'Integrante' }; });
+  msgs.reverse(); // veio do banco mais nova primeiro (pro LIMIT pegar as 60 mais recentes) — pra exibir, ordem cronológica (mais antiga em cima), igual WhatsApp
   lsSet('thread:' + grupo.id, msgs);
   state.threadMessages = msgs;
   mesclarPendentesNaThread(grupo.id);
@@ -666,6 +683,7 @@ async function loadThread(grupo) {
     state.minhasConfirmacoesMensagens = (conf || []).map(function (c) { return c.mensagem_id; });
   } else { state.minhasConfirmacoesMensagens = []; }
   render();
+  rolarThreadParaBaixo();
   subscribeThread(grupo.id);
 }
 
@@ -721,8 +739,7 @@ function enfileirarMensagem(grupoId, texto, ehInforme, exigeConfirmacao) {
   };
   state.outbox.push(item);
   lsSet('outbox', state.outbox);
-  if (grupoId === state.activeGroupId) mesclarPendentesNaThread(grupoId);
-  render();
+  if (grupoId === state.activeGroupId) { mesclarPendentesNaThread(grupoId); render(); rolarThreadParaBaixo(); } else { render(); }
   processarItemOutbox(item);
 }
 
@@ -735,12 +752,12 @@ var COLUNAS_MENSAGEM = 'id, texto, criado_em, fixado, removida_em, autor_id, eh_
 function confirmarMensagemNaThread(item, linhaReal) {
   linhaReal._autor = state.perfil;
   var cacheAtual = lsGet('thread:' + item.grupoId, []);
-  if (!cacheAtual.some(function (m) { return m.id === linhaReal.id; })) cacheAtual.unshift(linhaReal);
+  if (!cacheAtual.some(function (m) { return m.id === linhaReal.id; })) cacheAtual.push(linhaReal); // fim = mais nova, ordem cronológica
   lsSet('thread:' + item.grupoId, cacheAtual);
 
   if (item.grupoId === state.activeGroupId) {
     var idx = state.threadMessages.findIndex(function (x) { return x.id === item.tempId || x.id === linhaReal.id; });
-    if (idx !== -1) state.threadMessages[idx] = linhaReal; else state.threadMessages.unshift(linhaReal);
+    if (idx !== -1) state.threadMessages[idx] = linhaReal; else state.threadMessages.push(linhaReal);
   }
   render();
 }
@@ -2118,6 +2135,14 @@ document.addEventListener('input', function (e) {
   else if (id === 'chave-pix-input') { state.perfilFormChavePix = e.target.value; state.perfilChavePixSalvo = false; }
   else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
   else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
+});
+document.addEventListener('focusin', function (e) {
+  // teclado abrindo empurra o layout — sem isso, a conversa podia ficar
+  // "presa" mostrando área em branco em vez das últimas mensagens, bem
+  // onde a pessoa ia digitar. 'focusin' (não 'focus') porque precisa
+  // borbulhar — o elemento é recriado a cada render(), não dá pra escutar
+  // direto nele.
+  if (e.target && e.target.id === 'compose-input') rolarThreadParaBaixo();
 });
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
