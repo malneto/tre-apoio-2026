@@ -2023,11 +2023,15 @@ function renderPerfil() {
     if (state.verifStatus) { var vparts = state.verifStatus.split(':'); verifStatusHtml = '<div class="login-msg ' + vparts[0] + '" style="margin-top:8px;">' + esc(vparts.slice(1).join(':')) + '</div>'; }
     html += '<div class="add-form" style="margin-top:16px; border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Confirme seu e-mail pra poder postar</div>' +
       '<div class="hint" style="margin:0 2px 8px;">Você já pode ler tudo normalmente. Mandamos um código de 6 dígitos por e-mail — confirme aqui pra liberar postar mensagens, mural e confirmações.</div>' +
+      '<div style="display:flex; gap:8px; align-items:flex-start; background:#fff; border:1px solid #E4CA8B; border-radius:8px; padding:10px 12px; margin-bottom:10px;">' +
+      icon('search', 15, '#8A6A1E') +
+      '<div style="font-size:12.5px; color:#5A4A20; line-height:1.4;"><strong>O código pode cair na pasta de Spam ou Lixo Eletrônico</strong> — é comum logo nas primeiras semanas do app. Se não achar em alguns minutos, procure lá antes de pedir outro.</div>' +
+      '</div>' +
       '<input type="text" inputmode="numeric" maxlength="6" id="verif-codigo-input" placeholder="000000" style="text-align:center; font-size:18px; letter-spacing:5px;" value="' + esc(state.verifCodigo) + '">' +
       '<div class="add-form-actions"><button class="btn-primary" data-action="confirmar-verificacao" ' + (state.verifSending ? 'disabled' : '') + '>' + (state.verifSending ? 'Confirmando…' : 'Confirmar código') + '</button>' +
       '<button class="btn-secondary" data-action="reenviar-verificacao" ' + (state.verifSending ? 'disabled' : '') + '>Reenviar código</button></div>' +
       verifStatusHtml +
-      '<div class="hint" style="margin-top:10px;">Não recebeu? Confira o spam, ou peça apoio à equipe do TRE (Cartório Eleitoral).</div>' +
+      '<div class="hint" style="margin-top:10px;">Continua sem achar? Peça apoio à equipe do TRE (Cartório Eleitoral) — dá pra reenviar por WhatsApp também.</div>' +
       '</div>';
   }
   html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Nome de exibição</div>' +
@@ -2063,7 +2067,7 @@ function renderPainel() {
     (state.configGeralSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Salvo — vale ' + esc(state.configGeralIntervalo) + 's</div>' : '') +
     '</div>';
   html += '<div class="add-form" style="margin-bottom:16px;"><div class="add-form-title">Lista de espera de autorização (' + state.listaEspera.length + ')</div>' +
-    '<div class="hint" style="margin:0 2px 10px;">Quem ainda não confirmou o código de e-mail. Manda de novo por e-mail, ou por WhatsApp (abre seu WhatsApp com o texto pronto — você escolhe o contato certo).</div>';
+    '<div class="hint" style="margin:0 2px 10px;">Quem ainda não confirmou o código de e-mail. Manda de novo por e-mail, ou por WhatsApp (abre seu WhatsApp com o texto pronto — você escolhe o contato certo). Se a pessoa disser que não chegou, o mais comum é ter caído no Spam — vale orientar a checar lá antes de reenviar de novo.</div>';
   if (!state.listaEspera.length) {
     html += '<div class="hint">Ninguém esperando — todo mundo já confirmou.</div>';
   } else {
