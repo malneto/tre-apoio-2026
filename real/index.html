@@ -1897,6 +1897,7 @@ async function confirmarVerificacaoEmail() {
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Código inválido.'); render(); return; }
     state.perfil.email_verificado = true;
     state.verifCodigo = ''; state.verifStatus = 'ok:E-mail confirmado! Já pode postar.';
+    if (state.banner === 'Confirme o código de verificação (mandamos por e-mail) pra poder postar.') state.banner = '';
     render();
   } catch (e) {
     state.verifSending = false; state.verifStatus = 'error:Sem conexão. Tente de novo.'; render();
@@ -2050,7 +2051,7 @@ function renderPainel() {
   var membrosFiltrados = buscaNorm
     ? state.painelMembers.filter(function (m) { return semAcentoDisplay(m.nome_completo || '').toLowerCase().indexOf(buscaNorm) !== -1; })
     : state.painelMembers;
-  html += '<input type="text" id="painel-busca-input" placeholder="Buscar integrante pelo nome…" style="margin-bottom:10px;" value="' + esc(state.painelBusca) + '">';
+  html += '<div class="search-box" style="margin-bottom:10px;">' + icon('search', 16, '#8A8271') + '<input type="text" id="painel-busca-input" placeholder="Buscar integrante pelo nome…" value="' + esc(state.painelBusca) + '"></div>';
   html += '<div class="eyebrow">Integrantes (' + membrosFiltrados.length + (buscaNorm ? ' de ' + state.painelMembers.length : '') + ')</div>';
   if (buscaNorm && !membrosFiltrados.length) html += '<div class="hint">Ninguém encontrado com esse nome.</div>';
   membrosFiltrados.forEach(function (m, i) {
