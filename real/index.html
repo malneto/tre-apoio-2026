@@ -2141,9 +2141,19 @@ document.addEventListener('focusin', function (e) {
   // "presa" mostrando área em branco em vez das últimas mensagens, bem
   // onde a pessoa ia digitar. 'focusin' (não 'focus') porque precisa
   // borbulhar — o elemento é recriado a cada render(), não dá pra escutar
-  // direto nele.
+  // direto nele. Essa chamada aqui é só uma tentativa cedo — o teclado no
+  // Android ainda nem começou a abrir nesse instante, por isso tem o
+  // listener de visualViewport (mais embaixo) como o mecanismo de verdade.
   if (e.target && e.target.id === 'compose-input') rolarThreadParaBaixo();
 });
+// O visualViewport muda de tamanho quando o teclado termina de abrir/fechar
+// de verdade (diferente do 'focusin', que dispara antes do teclado sequer
+// começar a animar) — é o sinal confiável pra saber a hora certa de rolar.
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', function () {
+    if (state.screen === 'thread' && document.activeElement && document.activeElement.id === 'compose-input') rolarThreadParaBaixo();
+  });
+}
 document.addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
   if (e.target.id === 'compose-input') sendMessage();
