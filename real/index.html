@@ -553,6 +553,23 @@ async function logout() {
   state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
 }
 
+// Botão de escape na própria tela de login — pra quando algo trava/pisca
+// entre logado e deslogado (token velho de sessão anterior, por exemplo) e
+// a pessoa não consegue nem chegar na aba Perfil pra usar o logout normal.
+// Mais agressivo que o logout comum: limpa TODO o cache local do app
+// (qualquer usuário, não só o da sessão atual — que pode estar quebrada).
+async function encerrarSessaoForcado() {
+  try {
+    Object.keys(localStorage).filter(function (k) { return k.indexOf('tre2026:') === 0; }).forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) {}
+  try { await sb.auth.signOut(); } catch (e) {}
+  state.session = null; state.perfil = null;
+  state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
+  state.screen = 'login';
+  state.loginStatus = 'ok:Sessão encerrada e dados locais limpos. Pode tentar entrar de novo.';
+  render();
+}
+
 // ================= DADOS =================
 async function loadMyGroups() {
   if (!state.session) return; // sessão pode ter caído por uma corrida de renovação de token — não quebra, só desiste quieto
@@ -1377,7 +1394,9 @@ function renderLogin() {
     '<label class="consent-row"><input type="checkbox" id="login-aceite-checkbox"' + (state.loginAceite ? ' checked' : '') + '>' +
     '<span>Li e aceito que meus dados (nome, CPF, título de eleitor, data de nascimento e e-mail) sejam usados para confirmar minha identidade e liberar meu acesso a este aplicativo experimental de comunicação da 4ª Zona Eleitoral, até sua desativação e a exclusão dos meus dados pessoais (prevista para até 15 dias após o fim do pleito).</span></label>' +
     '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Entrar') + '</button>' +
-    '</div>' + statusHtml + '</div>';
+    '</div>' + statusHtml +
+    '<button class="link-btn" style="margin-top:18px; color:#9B9484; font-size:12px;" data-action="encerrar-sessao-forcado">Encerrar sessão / limpar dados salvos neste aparelho</button>' +
+    '</div>';
 }
 
 function renderPassosBloco(post) {
@@ -2108,6 +2127,7 @@ document.addEventListener('click', function (e) {
   var action = el.getAttribute('data-action');
   if (action === 'solicitar-codigo') solicitarCodigo();
   else if (action === 'logout') logout();
+  else if (action === 'encerrar-sessao-forcado') encerrarSessaoForcado();
   else if (action === 'nav-mural') go('mural');
   else if (action === 'nav-grupos') go('grupos');
   else if (action === 'nav-faq') go('faq');
