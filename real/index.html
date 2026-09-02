@@ -194,6 +194,7 @@
 </head>
 <body>
 <div class="shell" id="app"></div>
+<div id="update-banner" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:9999; background:#16294B; color:#F7F5F0; padding:12px 16px; text-align:center; font-size:13px; font-weight:600; cursor:pointer;">Nova versão disponível — toque pra atualizar</div>
 
 <script>
 "use strict";
@@ -1200,9 +1201,10 @@ async function loadListaEspera() {
 async function reenviarParaConvocado(perfilId, canal) {
   state.listaEsperaEnviando = perfilId + ':' + canal; render();
   try {
+    var { data: sessionData3 } = await sb.auth.getSession();
     var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData3.session.access_token },
       body: JSON.stringify({ reenviar_para: perfilId, canal: canal })
     });
     var json = await resp.json();
@@ -1803,16 +1805,30 @@ function renderFaqItem(item, comCategoria) {
   html += '</div>'; return html;
 }
 
+// Quando a sessão morreu de verdade no servidor (token revogado, ex.: reuso
+// de refresh token detectado entre abas) não adianta mostrar erro na tela de
+// Perfil — a pessoa fica presa lá sem entender. Desloga e manda pra tela de
+// login já com um aviso claro.
+async function sessaoMorreuVoltarParaLogin() {
+  await logout();
+  state.screen = 'login';
+  state.loginStatus = 'error:Sua sessão expirou (às vezes acontece ao abrir o mesmo link em mais de um lugar). Entre de novo com seus dados.';
+  render();
+}
+
 async function confirmarVerificacaoEmail() {
   var codigo = state.verifCodigo.trim();
   if (!codigo) return;
   state.verifSending = true; state.verifStatus = ''; render();
   try {
+    var { data: sessionData1 } = await sb.auth.getSession();
+    if (!sessionData1.session) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
     var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData1.session.access_token },
       body: JSON.stringify({ codigo: codigo })
     });
+    if (resp.status === 401) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
     var json = await resp.json();
     state.verifSending = false;
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Código inválido.'); render(); return; }
@@ -1827,11 +1843,14 @@ async function confirmarVerificacaoEmail() {
 async function pedirNovoCodigoVerificacao() {
   state.verifSending = true; state.verifStatus = ''; render();
   try {
+    var { data: sessionData2 } = await sb.auth.getSession();
+    if (!sessionData2.session) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
     var resp = await fetch(SUPABASE_URL + '/functions/v1/confirmar-verificacao', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.session.access_token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData2.session.access_token },
       body: JSON.stringify({ reenviar: true })
     });
+    if (resp.status === 401) { state.verifSending = false; await sessaoMorreuVoltarParaLogin(); return; }
     var json = await resp.json();
     state.verifSending = false;
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Não foi possível reenviar agora.'); render(); return; }
@@ -2313,8 +2332,32 @@ if (navigator.storage && navigator.storage.persist) {
   navigator.storage.persist().catch(function () {});
 }
 
+// Avisa quando tem versão nova publicada — sem isso, uma aba/PWA já aberta
+// nunca reexecuta o JS novo sozinha só porque o arquivo mudou no servidor
+// (o service worker por si só não resolve isso, só afeta a PRÓXIMA vez que
+// a página carrega do zero). Com o ritmo de publicações desse projeto,
+// rodar código velho já causou bug fantasma mais de uma vez.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      reg.update(); // confere na hora, não espera o navegador decidir sozinho quando checar
+      setInterval(function () { reg.update(); }, 5 * 60 * 1000);
+      reg.addEventListener('updatefound', function () {
+        var novoWorker = reg.installing;
+        if (!novoWorker) return;
+        novoWorker.addEventListener('statechange', function () {
+          // só avisa se JÁ tinha um service worker controlando antes — a
+          // primeira instalação (app novo) não é "atualização", é normal
+          if (novoWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            var banner = document.getElementById('update-banner');
+            if (banner) banner.style.display = 'block';
+          }
+        });
+      });
+    }).catch(function () {});
+  });
+  var updateBanner = document.getElementById('update-banner');
+  if (updateBanner) updateBanner.addEventListener('click', function () { window.location.reload(); });
 }
 </script>
 </body>
