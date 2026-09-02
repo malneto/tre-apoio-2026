@@ -457,7 +457,17 @@ async function boot() {
   if (data.session) { await onSignedIn(data.session); } else { state.screen = 'login'; render(); }
   sb.auth.onAuthStateChange(function (event, session) {
     if (event === 'SIGNED_IN' && session && (!state.session || state.session.user.id !== session.user.id)) onSignedIn(session);
-    else if (event === 'SIGNED_OUT') { state.session = null; state.perfil = null; state.screen = 'login'; render(); }
+    else if (event === 'SIGNED_OUT') {
+      // pode ser um SIGNED_OUT "fantasma" — um token velho de uma sessão
+      // anterior (ex.: outra aba anônima) falhando ao tentar se renovar
+      // sozinho em paralelo a um login novo que acabou de dar certo. Confere
+      // de verdade antes de derrubar tudo — se ainda tem sessão válida, era
+      // falso alarme, ignora (login recente continua valendo).
+      sb.auth.getSession().then(function (r) {
+        if (r.data.session) return;
+        state.session = null; state.perfil = null; state.screen = 'login'; render();
+      });
+    }
   });
 }
 
