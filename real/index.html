@@ -1990,11 +1990,22 @@ function renderBottomNav() {
   return '<div class="bottomnav">' + item('mural', 'nav-mural', 'home', 'Mural', pendentes > 0) + item('grupos', 'nav-grupos', 'ballot', 'Grupos') + item('faq', 'nav-faq', 'search', 'FAQ') + item('perfil', 'nav-perfil', 'school', 'Perfil') + '</div>';
 }
 
+// Guarda a posição de rolagem de cada tela — voltar de uma conversa jogava
+// sempre pro topo da lista de grupos (com dezenas de escolas, "sobe pro
+// Geral" de novo, obrigando a rolar tudo e reabrir a pasta certa toda vez).
+// Só salva/restaura quando a tela MUDA de verdade — não mexe na rolagem
+// enquanto continua na mesma tela.
+var scrollPorTela = {};
+var telaRenderizadaAnterior = null;
+
 function render() {
   var focus = null;
   var ae = document.activeElement;
   if (ae && ae.id && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) focus = { id: ae.id, start: ae.selectionStart, end: ae.selectionEnd };
   var app = document.getElementById('app');
+  var scrollAtual = window.scrollY || document.documentElement.scrollTop || 0;
+  var trocouDeTela = state.screen !== telaRenderizadaAnterior;
+  if (trocouDeTela && telaRenderizadaAnterior) scrollPorTela[telaRenderizadaAnterior] = scrollAtual;
   var html;
   if (state.screen === 'loading') html = renderLoading();
   else if (state.screen === 'login') html = renderLogin();
@@ -2014,6 +2025,11 @@ function render() {
   if (focus) {
     var el = document.getElementById(focus.id);
     if (el) { el.focus(); if (el.setSelectionRange && (el.type === 'text' || el.type === 'email' || !el.type)) { try { el.setSelectionRange(focus.start, focus.end); } catch (e) {} } }
+  }
+  if (trocouDeTela) {
+    var alvo = scrollPorTela[state.screen] || 0;
+    if (alvo) window.scrollTo(0, alvo);
+    telaRenderizadaAnterior = state.screen;
   }
 }
 
