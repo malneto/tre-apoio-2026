@@ -404,11 +404,50 @@ var state = {
   verifCodigo: '', verifStatus: '', verifSending: false,
   online: navigator.onLine,
   outbox: [],
-  banner: ''
+  banner: '',
+  mostrarPassosInstalarIOS: false,
+  appRecemInstalado: false
 };
 
 var threadChannel = null, muralChannel = null;
 var logoutFoiPedidoPelaPessoa = false;
+var deferredInstallPrompt = null;
+
+// ================= Instalar como app (tela de início) =================
+// Android/Chrome/Edge: o navegador dispara beforeinstallprompt e a gente
+// guarda o evento pra disparar sob demanda quando a pessoa toca no botão —
+// sem isso, dá pra instalar só pelo menu escondido do navegador.
+// iOS (Safari e qualquer navegador lá, todos são WebKit por baixo): a Apple
+// não deixa nenhum site disparar a instalação por código, de propósito —
+// o máximo que dá pra fazer é mostrar o passo a passo (Compartilhar >
+// Adicionar à Tela de Início) de um jeito mais claro que o padrão do iOS.
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+function appRodandoInstalado() {
+  return (window.navigator.standalone === true) || window.matchMedia('(display-mode: standalone)').matches;
+}
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  render();
+});
+window.addEventListener('appinstalled', function () {
+  deferredInstallPrompt = null;
+  state.appRecemInstalado = true;
+  render();
+});
+async function instalarApp() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    var escolha = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (escolha.outcome === 'accepted') state.appRecemInstalado = true;
+    render();
+    return;
+  }
+  if (isIOS()) { state.mostrarPassosInstalarIOS = true; render(); }
+}
 
 // ================= LOCAL-FIRST: cache local + fila de envio =================
 // Leitura: cada tela mostra o que já tem salvo no aparelho NA HORA (sem
@@ -1878,6 +1917,31 @@ async function salvarChavePix() {
   render();
 }
 
+function renderInstalarAppCard() {
+  if (state.appRecemInstalado) {
+    return '<div class="add-form" style="margin-top:16px; border-color:#B7CDBE; background:#EAF1EC;">' +
+      '<div style="display:flex; align-items:center; gap:8px; color:#2E5A3E; font-weight:700; font-size:13.5px;">' + icon('check', 20, '#2E5A3E') + ' App instalado! Já pode abrir pelo ícone na tela de início.</div></div>';
+  }
+  if (appRodandoInstalado()) return '';
+  if (!deferredInstallPrompt && !isIOS()) return '';
+  var html = '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Instalar o app</div>' +
+    '<div class="hint" style="margin:0 2px 8px;">Coloca um ícone na tela de início do seu celular — abre direto, sem digitar endereço nem procurar aba.</div>' +
+    '<div class="add-form-actions"><button class="btn-primary" data-action="instalar-app">' + icon('upload', 16, '#F7F5F0') + ' Instalar app</button></div>';
+  if (state.mostrarPassosInstalarIOS) {
+    html += '<div style="margin-top:14px; padding-top:14px; border-top:1px solid #E4DFCF;">' +
+      '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;"><div style="flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:#16294B; color:#F7F5F0; font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center;">1</div>' +
+      '<div style="font-size:13.5px; padding-top:2px;">Toque no ícone ' + icon('upload', 15, '#16294B') + ' <strong>Compartilhar</strong>, na barra do Safari (embaixo, ou em cima se for iPad).</div></div>' +
+      '<div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;"><div style="flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:#16294B; color:#F7F5F0; font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center;">2</div>' +
+      '<div style="font-size:13.5px; padding-top:2px;">Role a lista de opções e toque em ' + icon('plus', 15, '#16294B') + ' <strong>Adicionar à Tela de Início</strong>.</div></div>' +
+      '<div style="display:flex; align-items:flex-start; gap:10px;"><div style="flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:#16294B; color:#F7F5F0; font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center;">3</div>' +
+      '<div style="font-size:13.5px; padding-top:2px;">Toque em <strong>Adicionar</strong>, no canto de cima. Pronto — o ícone aparece na tela de início.</div></div>' +
+      '<div class="hint" style="margin-top:10px;">Só dá pra fazer isso pelo Safari — se você abriu esse link por dentro do WhatsApp ou de outro app, toque nos três pontinhos e escolha "Abrir no Safari" primeiro.</div>' +
+      '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function renderPerfil() {
   var p = state.perfil;
   var badges = [];
@@ -1892,6 +1956,7 @@ function renderPerfil() {
   if (p.is_moderador) {
     html += '<button class="cta-btn" data-action="open-painel">' + icon('shield', 15, '#F7F5F0') + ' Abrir painel de moderação</button>';
   }
+  html += renderInstalarAppCard();
   if (!p.email_verificado) {
     var verifStatusHtml = '';
     if (state.verifStatus) { var vparts = state.verifStatus.split(':'); verifStatusHtml = '<div class="login-msg ' + vparts[0] + '" style="margin-top:8px;">' + esc(vparts.slice(1).join(':')) + '</div>'; }
@@ -2228,6 +2293,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'abrir-add') { state.showAddForm = true; render(); }
   else if (action === 'cancelar-add') { state.showAddForm = false; render(); }
   else if (action === 'confirmar-add') adicionarIntegrante();
+  else if (action === 'instalar-app') instalarApp();
 });
 document.addEventListener('input', function (e) {
   var id = e.target.id;
