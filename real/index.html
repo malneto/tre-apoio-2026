@@ -402,10 +402,41 @@ var state = {
   loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
   online: navigator.onLine,
+  outbox: [],
   banner: ''
 };
 
 var threadChannel = null, muralChannel = null;
+
+// ================= LOCAL-FIRST: cache local + fila de envio =================
+// Leitura: cada tela mostra o que já tem salvo no aparelho NA HORA (sem
+// esperar rede) e atualiza sozinha por trás quando a resposta do servidor
+// chega — troca de tela deixa de esperar uma ida e volta até o Supabase.
+// Escrita (mensagem/informe): aparece na hora na tela (otimista), guardada
+// numa fila local até o servidor confirmar; se cair a conexão, fica na fila
+// e reenvia sozinho quando voltar; se o servidor RECUSAR (flood, sem
+// permissão etc.), marca só aquela mensagem como "não enviada" — não fica
+// tentando de novo sozinho, porque recusa de validação não é problema de
+// rede, tentar de novo ia falhar do mesmo jeito.
+function lsChave(sufixo) {
+  var uid = (state.session && state.session.user && state.session.user.id) || 'anon';
+  return 'tre2026:' + uid + ':' + sufixo;
+}
+function lsGet(sufixo, valorPadrao) {
+  try {
+    var bruto = localStorage.getItem(lsChave(sufixo));
+    return bruto !== null ? JSON.parse(bruto) : valorPadrao;
+  } catch (e) { return valorPadrao; }
+}
+function lsSet(sufixo, valor) {
+  try { localStorage.setItem(lsChave(sufixo), JSON.stringify(valor)); } catch (e) { /* quota cheia ou navegação privada — segue só em memória */ }
+}
+function lsLimparTudoDoUsuario() {
+  try {
+    var prefixo = lsChave('');
+    Object.keys(localStorage).filter(function (k) { return k.indexOf(prefixo) === 0; }).forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) {}
+}
 
 // ================= AUTH / BOOT =================
 async function boot() {
@@ -432,18 +463,36 @@ async function boot() {
 
 async function onSignedIn(session) {
   state.session = session;
+  state.outbox = lsGet('outbox', []);
+
+  // mostra o perfil salvo (se tiver) na hora, sem esperar a rede — o Mural
+  // já pode aparecer com dado antigo enquanto a versão nova chega por trás
+  var perfilCache = lsGet('perfil', null);
+  if (perfilCache) {
+    state.perfil = perfilCache;
+    state.perfilFormNomeExibicao = perfilCache.nome_exibicao || '';
+    state.perfilFormChavePix = perfilCache.chave_pix || '';
+    state.screen = 'mural';
+    state.muralPosts = lsGet('muralPosts', []);
+    state.myGroups = lsGet('myGroups', []);
+    render();
+  }
+
   var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, subfuncao, chave_pix, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
   if (error || !perfil) {
+    if (perfilCache) return; // já está mostrando o que tem em cache — provável só falta de rede, não desloga à toa
     state.banner = 'Sua conta ainda não está liberada neste app. Fale com o Cartório Eleitoral.';
     await sb.auth.signOut();
     return;
   }
   state.perfil = perfil;
+  lsSet('perfil', perfil);
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
   state.perfilFormChavePix = perfil.chave_pix || '';
   state.screen = 'mural';
   await Promise.all([loadMural(), loadMyGroups()]);
   render();
+  flushOutbox();
 }
 
 async function solicitarCodigo() {
@@ -480,7 +529,11 @@ async function solicitarCodigo() {
   }
 }
 
-async function logout() { await sb.auth.signOut(); state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false; }
+async function logout() {
+  lsLimparTudoDoUsuario();
+  await sb.auth.signOut();
+  state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
+}
 
 // ================= DADOS =================
 async function loadMyGroups() {
@@ -489,13 +542,15 @@ async function loadMyGroups() {
     // acompanhar tudo, mesmo sem ser membro formal de cada um — condiz com
     // a RLS de mensagens, que já libera leitura irrestrita pra moderador.
     var { data: todos, error: todosErr } = await sb.from('grupos').select('id,slug,nome,descricao,tipo,escola_id').order('nome');
-    if (todosErr) { state.banner = todosErr.message; return; }
+    if (todosErr) { if (!state.myGroups.length) state.banner = todosErr.message; return; }
     state.myGroups = todos || [];
+    lsSet('myGroups', state.myGroups);
     return;
   }
   var { data, error } = await sb.from('memberships').select('grupo_id, papel, grupos(id,slug,nome,descricao,tipo,escola_id)').eq('perfil_id', state.session.user.id);
-  if (error) { state.banner = error.message; return; }
+  if (error) { if (!state.myGroups.length) state.banner = error.message; return; }
   state.myGroups = (data || []).map(function (row) { return row.grupos; }).filter(Boolean);
+  lsSet('myGroups', state.myGroups);
 }
 
 async function attachAutores(posts) {
@@ -515,6 +570,7 @@ async function loadMural() {
     : Promise.resolve({ data: [] });
   var resultados = await Promise.all([publicadosPromise, pendentesPromise]);
   state.muralPosts = resultados[0].data || []; // autor individual não é exposto no mural público (RLS de perfis já barra e é o design certo)
+  lsSet('muralPosts', state.muralPosts);
   state.reviewQueue = vejoPendentes ? await attachAutores(resultados[1].data || []) : [];
   var idsQueExigem = state.muralPosts.filter(function (p) { return p.exige_confirmacao; }).map(function (p) { return p.id; });
   if (idsQueExigem.length) {
@@ -535,17 +591,44 @@ function subscribeMural() {
   }).subscribe();
 }
 
+// Junta na lista de mensagens qualquer item ainda pendente na fila de envio
+// pra esse grupo (mandado mas o servidor ainda não confirmou, ou tentando de
+// novo por falta de conexão) — sem isso, um reload da thread (troca de tela,
+// evento do Realtime) faria a mensagem que a pessoa acabou de mandar sumir
+// da tela até o envio de verdade terminar.
+function mesclarPendentesNaThread(grupoId) {
+  var pendentes = state.outbox.filter(function (o) { return o.tipo === 'mensagem' && o.grupoId === grupoId; });
+  pendentes.forEach(function (o) {
+    var jaTem = state.threadMessages.some(function (m) { return m.id === o.tempId; });
+    if (jaTem) return;
+    state.threadMessages.unshift({
+      id: o.tempId, texto: o.texto, criado_em: o.criado_em, fixado: false, removida_em: null,
+      autor_id: state.session.user.id, eh_informe: !!o.ehInforme, exige_confirmacao: !!o.exigeConfirmacao,
+      _autor: state.perfil, _pendente: true, _falhou: o.falhou || false, _erro: o.erro || null
+    });
+  });
+}
+
 async function loadThread(grupo) {
   if (state.activeGroupId !== grupo.id) state.threadMembersExpanded = false;
   state.activeGroupId = grupo.id; state.activeGroupMeta = grupo;
-  state.screen = 'thread'; state.threadMessages = []; state.threadMembers = []; state.composeError = '';
+  state.screen = 'thread'; state.composeError = '';
   clearInterval(composeCooldownTimer); state.composeCooldownRestante = 0; state.composeCooldownOk = false;
+
+  // mostra o que já tem salvo desse grupo na hora — só limpa/mostra "vazio"
+  // se realmente não tiver nada em cache ainda (primeira vez abrindo)
+  var cacheMsgs = lsGet('thread:' + grupo.id, null);
+  state.threadMessages = cacheMsgs ? cacheMsgs.slice() : [];
+  state.threadMembers = lsGet('threadMembers:' + grupo.id, []);
+  mesclarPendentesNaThread(grupo.id);
   render();
+
   var msgsPromise = sb.from('mensagens').select('id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao').eq('grupo_id', grupo.id).order('criado_em', { ascending: false }).limit(60);
   var membersPromise = state.perfil.is_moderador
     ? sb.from('memberships').select('perfil_id, papel, pode_postar, perfis(nome_completo, funcao)').eq('grupo_id', grupo.id)
     : Promise.resolve({ data: [] });
   var [msgsRes, membersRes] = await Promise.all([msgsPromise, membersPromise]);
+  if (msgsRes.error) { if (!cacheMsgs) state.banner = msgsRes.error.message; render(); return; } // sem rede: fica só no que já tinha
   var msgs = msgsRes.data || [];
   var autorIds = Array.from(new Set(msgs.map(function (m) { return m.autor_id; })));
   var autorMap = {};
@@ -554,10 +637,13 @@ async function loadThread(grupo) {
     (autores || []).forEach(function (a) { autorMap[a.id] = a; });
   }
   msgs.forEach(function (m) { m._autor = autorMap[m.autor_id] || { nome_completo: 'Integrante' }; });
+  lsSet('thread:' + grupo.id, msgs);
   state.threadMessages = msgs;
+  mesclarPendentesNaThread(grupo.id);
   state.threadMembers = (membersRes.data || []).map(function (row) {
     return { perfilId: row.perfil_id, name: row.perfis ? row.perfis.nome_completo : '—', role: row.perfis ? row.perfis.funcao : row.papel };
   });
+  if (state.perfil.is_moderador) lsSet('threadMembers:' + grupo.id, state.threadMembers);
   var minhaMembership = (membersRes.data || []).filter(function (row) { return row.perfil_id === state.session.user.id; })[0];
   state.souMembroComPostagem = !!(minhaMembership && minhaMembership.pode_postar);
   var idsQueExigem = msgs.filter(function (m) { return m.exige_confirmacao; }).map(function (m) { return m.id; });
@@ -610,36 +696,107 @@ function iniciarContagemRegressivaEnvio(segundos) {
   render();
 }
 
-async function sendMessage() {
+// Enfileira uma mensagem/informe pra envio — aparece na tela IMEDIATAMENTE
+// (otimista) e é processada em seguida (na hora, se tiver rede; guardada e
+// tentada de novo quando a conexão voltar, se não tiver).
+function enfileirarMensagem(grupoId, texto, ehInforme, exigeConfirmacao) {
+  var item = {
+    tempId: 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    tipo: 'mensagem', grupoId: grupoId, texto: texto, ehInforme: !!ehInforme, exigeConfirmacao: !!exigeConfirmacao,
+    criado_em: new Date().toISOString()
+  };
+  state.outbox.push(item);
+  lsSet('outbox', state.outbox);
+  if (grupoId === state.activeGroupId) mesclarPendentesNaThread(grupoId);
+  render();
+  processarItemOutbox(item);
+}
+
+async function processarItemOutbox(item) {
+  // trava contra processar o mesmo item 2x — o navegador pode disparar
+  // 'online' mais de uma vez seguida (nativo + qualquer coisa que também
+  // escute o evento), e enfileirarMensagem já chama isso na hora também.
+  if (item._emProcessamento) return;
+  item._emProcessamento = true;
+  if (!navigator.onLine) { item._emProcessamento = false; return; } // fica na fila — flushOutbox tenta de novo quando o evento 'online' disparar
+  var colunas = 'id, texto, criado_em, fixado, removida_em, autor_id, eh_informe, exige_confirmacao';
+  var { data, error } = await sb.from('mensagens').insert({
+    grupo_id: item.grupoId, autor_id: state.session.user.id, texto: item.texto,
+    eh_informe: item.ehInforme, exige_confirmacao: item.exigeConfirmacao
+  }).select(colunas).single();
+
+  state.outbox = state.outbox.filter(function (o) { return o.tempId !== item.tempId; });
+  lsSet('outbox', state.outbox);
+
+  if (error) {
+    // recusa do servidor (flood, sem permissão etc.) — não é problema de rede,
+    // tentar de novo sozinho ia falhar igual. Marca só essa mensagem como não
+    // enviada, com opção de tentar de novo ou descartar.
+    if (item.grupoId === state.activeGroupId) {
+      var idxFalha = state.threadMessages.findIndex(function (x) { return x.id === item.tempId; });
+      if (idxFalha !== -1) {
+        state.threadMessages[idxFalha]._pendente = false;
+        state.threadMessages[idxFalha]._falhou = true;
+        state.threadMessages[idxFalha]._erro = error.message;
+      }
+      var m = (error.message || '').match(/Espere (\d+) segundos/);
+      if (m && !item.ehInforme) iniciarContagemRegressivaEnvio(parseInt(m[1], 10));
+    }
+    render();
+    return;
+  }
+
+  // atualiza o cache local desse grupo direto — não pode depender só do
+  // Realtime disparar um recarregamento completo pra isso acontecer (a
+  // pessoa pode ter saído da tela rápido, ou o evento demorar/falhar)
+  data._autor = state.perfil;
+  var cacheAtual = lsGet('thread:' + item.grupoId, []);
+  cacheAtual.unshift(data);
+  lsSet('thread:' + item.grupoId, cacheAtual);
+
+  if (item.grupoId === state.activeGroupId) {
+    var idx = state.threadMessages.findIndex(function (x) { return x.id === item.tempId; });
+    if (idx !== -1) state.threadMessages[idx] = data; else state.threadMessages.unshift(data);
+  }
+  render();
+}
+
+function flushOutbox() {
+  if (!navigator.onLine || !state.outbox.length) return;
+  state.outbox.slice().forEach(function (item) { processarItemOutbox(item); });
+}
+
+function retryMensagemFalha(tempId) {
+  var idx = state.threadMessages.findIndex(function (m) { return m.id === tempId; });
+  if (idx === -1) return;
+  var msg = state.threadMessages[idx];
+  state.threadMessages.splice(idx, 1);
+  enfileirarMensagem(state.activeGroupId, msg.texto, msg.eh_informe, msg.exige_confirmacao);
+}
+function descartarMensagemFalha(tempId) {
+  var idx = state.threadMessages.findIndex(function (m) { return m.id === tempId; });
+  if (idx !== -1) state.threadMessages.splice(idx, 1);
+  render();
+}
+
+function sendMessage() {
   var texto = state.composeText.trim();
   if (!texto || !state.activeGroupId) return;
   if (exigeVerificacao()) return;
   if (state.composeCooldownRestante > 0) return;
   state.composeError = '';
   state.composeCooldownOk = false;
-  var { error } = await sb.from('mensagens').insert({ grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto });
-  if (error) {
-    var msg = error.message || '';
-    var m = msg.match(/Espere (\d+) segundos/);
-    if (m) { iniciarContagemRegressivaEnvio(parseInt(m[1], 10)); }
-    else { state.composeError = msg; render(); }
-    return;
-  }
   state.composeText = '';
-  await loadThread(state.activeGroupMeta);
+  enfileirarMensagem(state.activeGroupId, texto, false, false);
 }
 
-async function postarInforme() {
+function postarInforme() {
   var texto = state.informeFormTexto.trim();
   if (!texto || !state.activeGroupId) { state.banner = 'Escreva o texto do informe.'; render(); return; }
   if (exigeVerificacao()) return;
-  var { error } = await sb.from('mensagens').insert({
-    grupo_id: state.activeGroupId, autor_id: state.session.user.id, texto: texto,
-    eh_informe: true, exige_confirmacao: state.informeFormExigeConfirmacao
-  });
-  if (error) { state.banner = error.message; render(); return; }
+  var exigeConf = state.informeFormExigeConfirmacao;
   state.showInformeForm = false; state.informeFormTexto = ''; state.informeFormExigeConfirmacao = false;
-  await loadThread(state.activeGroupMeta);
+  enfileirarMensagem(state.activeGroupId, texto, true, exigeConf);
 }
 
 async function confirmarLeituraMensagem(id) {
@@ -786,8 +943,12 @@ async function removerAvisoMural(id) {
 var FAQ_CAT_ICON = { urna: 'urna', encerramento: 'logout', justificativa: 'doc', financeiro: 'cifrao', midia: 'broadcast', fiscalizacao: 'shield', vestuario: 'vest' };
 
 async function loadFaq() {
+  var cache = lsGet('faqPerguntas', null);
+  if (cache) { state.faqPerguntas = cache; state.faqLoaded = true; render(); }
   var { data, error } = await sb.from('faq_perguntas').select('*').order('ordem');
-  state.faqPerguntas = error ? [] : (data || []);
+  if (error) { if (!cache) { state.faqPerguntas = []; state.faqLoaded = true; render(); } return; }
+  state.faqPerguntas = data || [];
+  lsSet('faqPerguntas', state.faqPerguntas);
   state.faqLoaded = true;
   render();
 }
@@ -833,8 +994,12 @@ function slugify(s) {
 function semAcentoDisplay(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 
 async function loadPainel() {
+  state.allGroups = lsGet('allGroups', state.allGroups);
+  state.painelMembers = state.painelFilter === 'todos' ? lsGet('painelMembers', []) : [];
+  state.listaEspera = lsGet('listaEspera', []);
+  render();
   var { data: grupos } = await sb.from('grupos').select('*').order('nome');
-  state.allGroups = grupos || [];
+  if (grupos) { state.allGroups = grupos; lsSet('allGroups', grupos); }
   var { data: config } = await sb.from('configuracao').select('valor').eq('chave', 'geral_intervalo_segundos').maybeSingle();
   state.configGeralIntervalo = config ? config.valor : '60';
   await Promise.all([loadPainelMembers(), loadListaEspera()]);
@@ -857,6 +1022,7 @@ async function loadPainelMembers() {
   }
   var { data } = await q;
   state.painelMembers = agruparPorPessoa(data || []);
+  if (state.painelFilter === 'todos') lsSet('painelMembers', state.painelMembers);
   render();
 }
 // Uma pessoa aparece 1x na lista mesmo pertencendo a vários grupos (Geral +
@@ -896,8 +1062,10 @@ function localTexto(pessoa) {
   return pessoa.gruposPrimarios.map(function (g) { return g.nome; }).join(' + ');
 }
 async function loadListaEspera() {
-  var { data } = await sb.from('perfis').select('id, nome_completo').eq('email_verificado', false).eq('ativo', true).order('nome_completo');
+  var { data, error } = await sb.from('perfis').select('id, nome_completo').eq('email_verificado', false).eq('ativo', true).order('nome_completo');
+  if (error) return;
   state.listaEspera = data || [];
+  lsSet('listaEspera', state.listaEspera);
   render();
 }
 
@@ -1292,6 +1460,22 @@ function renderGrupos() {
   return html;
 }
 
+function renderStatusPendenteFalhou(m) {
+  if (m._pendente) {
+    var texto = navigator.onLine ? 'Enviando…' : 'Na fila — sem conexão, envia sozinho quando voltar';
+    return '<div style="display:flex; align-items:center; gap:4px; margin-top:4px; font-size:10.5px; color:#9B9484;">' + icon('clock', 11, '#9B9484') + esc(texto) + '</div>';
+  }
+  if (m._falhou) {
+    return '<div style="margin-top:4px;">' +
+      '<div style="font-size:11px; color:#A24B3E; font-weight:600;">Não enviada — ' + esc(m._erro || 'tente de novo') + '</div>' +
+      '<div style="display:flex; gap:10px; margin-top:2px;">' +
+      '<button class="link-btn" style="margin:0; font-size:11px;" data-action="retry-mensagem" data-tempid="' + esc(m.id) + '">Tentar de novo</button>' +
+      '<button class="link-btn" style="margin:0; font-size:11px; color:#9B9484;" data-action="descartar-mensagem" data-tempid="' + esc(m.id) + '">Descartar</button>' +
+      '</div></div>';
+  }
+  return '';
+}
+
 function renderThread() {
   var html = '';
   if (state.threadMembers.length) {
@@ -1327,8 +1511,9 @@ function renderThread() {
         html += '<div class="msg-removed">Mensagem removida pela moderação.</div>';
       } else {
         html += '<div class="post-text">' + esc(m.texto) + '</div>';
-        if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
-        if (m.exige_confirmacao) {
+        html += renderStatusPendenteFalhou(m);
+        if (state.perfil.is_moderador && !m._pendente && !m._falhou) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
+        if (m.exige_confirmacao && !m._pendente && !m._falhou) {
           var confirmadoInf = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
           html += confirmadoInf
             ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px;">' + icon('check', 18, '#3E6E4E') + ' Leitura confirmada</div>'
@@ -1349,8 +1534,9 @@ function renderThread() {
       html += '<div class="msg-text">' + esc(m.texto) +
         '<span class="msg-meta">' + (m.fixado ? icon('pin', 11, 'none', '#C79A3D') : '') + '<span class="msg-time">' + esc(fmtHora(m.criado_em)) + '</span></span>' +
         '<span style="clear:both; display:block;"></span></div>';
-      if (state.perfil.is_moderador) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
-      if (m.exige_confirmacao) {
+      html += renderStatusPendenteFalhou(m);
+      if (state.perfil.is_moderador && !m._pendente && !m._falhou) html += '<button class="del-msg-btn" data-action="remove-message" data-id="' + m.id + '">' + icon('x', 12) + '</button>';
+      if (m.exige_confirmacao && !m._pendente && !m._falhou) {
         var confirmado = state.minhasConfirmacoesMensagens.indexOf(m.id) !== -1;
         html += confirmado
           ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:12px; margin-top:6px;">' + icon('check', 15, '#3E6E4E') + ' Leitura confirmada</div>'
@@ -1393,12 +1579,13 @@ function renderInformeBox() {
 
 function renderThreadComposer() {
   var html = renderInformeBox() + '<div class="composer">';
-  if (!state.online) {
-    html += '<div class="composer-blocked">Sem conexão — a mensagem será enviada ao reconectar.</div>';
-  } else if (!canPostHint()) {
+  if (!canPostHint()) {
     html += '<div class="composer-blocked">Você está vendo este grupo como moderador, mas não é integrante dele — só acompanha, não posta aqui.</div>';
   } else {
+    // sem conexão não bloqueia mais — a mensagem entra na fila e sai sozinha
+    // quando a rede voltar (ver enfileirarMensagem/flushOutbox)
     var emCooldown = state.composeCooldownRestante > 0;
+    if (!state.online) html += '<div class="hint" style="margin:0 0 8px;">Sem conexão — sua mensagem fica na fila e envia sozinha quando voltar.</div>';
     html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '"' + (emCooldown ? ' disabled' : '') + '>' +
       '<button class="send-btn" data-action="send-message"' + (emCooldown ? ' disabled' : '') + '>' + icon('send', 16, '#F7F5F0') + '</button></div>';
     if (emCooldown) {
@@ -1804,6 +1991,8 @@ document.addEventListener('click', function (e) {
   else if (action === 'reenviar-verificacao') pedirNovoCodigoVerificacao();
   else if (action === 'send-message') sendMessage();
   else if (action === 'remove-message') removeMessage(el.getAttribute('data-id'));
+  else if (action === 'retry-mensagem') retryMensagemFalha(el.getAttribute('data-tempid'));
+  else if (action === 'descartar-mensagem') descartarMensagemFalha(el.getAttribute('data-tempid'));
   else if (action === 'remove-do-grupo') removerDoGrupo(el.getAttribute('data-id'), el.getAttribute('data-grupo'));
   else if (action === 'remove-integrante') removerIntegrante(el.getAttribute('data-id'));
   else if (action === 'abrir-editar-convocado') abrirEditarConvocado(el.getAttribute('data-id'));
@@ -1904,7 +2093,7 @@ document.addEventListener('change', function (e) {
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
-window.addEventListener('online', function () { state.online = true; render(); });
+window.addEventListener('online', function () { state.online = true; render(); flushOutbox(); });
 window.addEventListener('offline', function () { state.online = false; render(); });
 
 boot();
