@@ -2138,6 +2138,25 @@ document.addEventListener('change', function (e) {
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
+// Bloqueia só o "puxar pra baixo" quando já está no topo da tela (é isso que
+// o navegador interpreta como pull-to-refresh e recarrega o app, voltando
+// pro Mural mesmo se a pessoa estava navegando em outro lugar) — CSS sozinho
+// (overscroll-behavior/touch-action) não deu conta disso de forma confiável
+// no Android. Só intercepta esse gesto específico; rolar normalmente (pra
+// cima, pra baixo fora do topo) continua igual.
+(function () {
+  var yInicial = 0;
+  document.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 1) yInicial = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (e.touches.length !== 1) return;
+    var yAtual = e.touches[0].clientY;
+    var rolagem = window.scrollY || document.documentElement.scrollTop || 0;
+    if (rolagem <= 0 && yAtual > yInicial) e.preventDefault();
+  }, { passive: false });
+})();
+
 window.addEventListener('online', function () { state.online = true; render(); flushOutbox(); });
 window.addEventListener('offline', function () { state.online = false; render(); });
 
