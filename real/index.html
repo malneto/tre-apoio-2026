@@ -401,7 +401,7 @@ var state = {
   newEscola: '', newSecao: '', newSubfuncao: '',
   editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '', editSubfuncao: '', editChavePix: '', editEmailSomenteLeitura: '', editEmailCarregando: false,
   showImportForm: false, importEnviando: false, importResultado: null,
-  loginCpf: '', loginTitulo: '', loginNome: '', loginNascimento: '', loginStatus: '', loginSending: false, loginAceite: false,
+  loginEmail: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
   online: navigator.onLine,
   outbox: [],
@@ -555,6 +555,14 @@ async function onSignedIn(session) {
   lsSet('perfil', perfil);
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
   state.perfilFormChavePix = perfil.chave_pix || '';
+  if (!perfil.email_verificado) {
+    // nada de conteúdo carrega até confirmar o código — a leitura agora
+    // também exige sessão verificada (RLS), não só a escrita como antes.
+    // Manda direto pra aba Perfil, onde fica o campo de confirmar código.
+    state.screen = 'perfil';
+    render();
+    return;
+  }
   state.screen = 'mural';
   try {
     await Promise.all([loadMural(), loadMyGroups()]);
@@ -571,30 +579,32 @@ async function onSignedIn(session) {
 
 async function solicitarCodigo() {
   state.diagnosticoTecnico = '';
-  var cpf = state.loginCpf.trim(), titulo = state.loginTitulo.trim(), nome = state.loginNome.trim(), nascimento = state.loginNascimento.trim();
-  if (!cpf || !titulo || !nome || !nascimento) { state.loginStatus = 'error:Preencha CPF, título, nome completo e data de nascimento.'; render(); return; }
+  var email = state.loginEmail.trim();
+  if (!email) { state.loginStatus = 'error:Preencha seu e-mail.'; render(); return; }
   if (!state.loginAceite) { state.loginStatus = 'error:Marque o aceite do uso dos dados pra continuar.'; render(); return; }
   state.loginSending = true; state.loginStatus = ''; render();
   try {
     var resp = await fetch(SUPABASE_URL + '/functions/v1/solicitar-acesso', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cpf: cpf, titulo: titulo, nome: nome, data_nascimento: nascimento, consentimento: true })
+      body: JSON.stringify({ email: email, consentimento: true })
     });
     var json = await resp.json();
     if (!resp.ok) {
       state.loginSending = false;
-      state.loginStatus = 'error:' + (json.error || 'Não foi possível verificar seus dados agora. Tente de novo em instantes.');
+      state.loginStatus = 'error:' + (json.error || 'Não foi possível verificar seu e-mail agora. Tente de novo em instantes.');
       render();
       return;
     }
     if (!json.hashed_token) {
-      // resposta genérica (não bateu) — não revela se o cadastro existe ou não
+      // resposta genérica (não bateu) — não revela se o e-mail está cadastrado ou não
       state.loginSending = false;
       state.loginStatus = 'ok:' + json.mensagem;
       render();
       return;
     }
-    // bateu: login de leitura instantâneo, sem esperar e-mail nenhum
+    // e-mail cadastrado: estabelece a sessão, mas nada de conteúdo aparece
+    // até confirmar o código — RLS de leitura exige sessão verificada
+    // (ver 20260903100000_login_so_email_leitura_exige_sessao.sql)
     var { error } = await sb.auth.verifyOtp({ token_hash: json.hashed_token, type: 'magiclink' });
     state.loginSending = false;
     if (error) { state.loginStatus = 'error:Não foi possível liberar o acesso agora. Tente de novo.'; render(); return; }
@@ -608,7 +618,7 @@ async function logout() {
   logoutFoiPedidoPelaPessoa = true;
   lsLimparTudoDoUsuario();
   await sb.auth.signOut();
-  state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
+  state.loginEmail = ''; state.loginAceite = false;
 }
 
 // Botão de escape na própria tela de login — pra quando algo trava/pisca
@@ -623,7 +633,7 @@ async function encerrarSessaoForcado() {
   } catch (e) {}
   try { await sb.auth.signOut(); } catch (e) {}
   state.session = null; state.perfil = null;
-  state.loginCpf = ''; state.loginTitulo = ''; state.loginNome = ''; state.loginNascimento = ''; state.loginAceite = false;
+  state.loginEmail = ''; state.loginAceite = false;
   state.screen = 'login';
   state.loginStatus = 'ok:Sessão encerrada e dados locais limpos. Pode tentar entrar de novo.';
   render();
@@ -1511,15 +1521,12 @@ function renderLogin() {
   return renderHeader() + '<div class="center-screen">' + bannerHtml +
     '<div class="login-mark">' + markSvg() + '</div>' +
     '<div class="login-title">Entrar</div>' +
-    '<div class="login-sub">Confirme os dados já cadastrados na sua convocação junto ao TRE-PE. Sem senha — se os dados baterem, seu acesso de leitura é liberado na hora (Mural, grupos, tudo). Pra poder postar, mandamos separadamente um código de verificação pro seu e-mail, que você confirma na aba Perfil quando quiser.</div>' +
+    '<div class="login-sub">Digite o e-mail já cadastrado na sua convocação junto ao TRE-PE. Sem senha — mandamos um código de 6 dígitos pra esse e-mail, e ele libera tudo: Mural, grupos, postar. Confira o Spam se não achar em alguns minutos.</div>' +
     '<div class="login-form">' +
-    '<input type="text" id="login-nome-input" placeholder="Nome completo" value="' + esc(state.loginNome) + '">' +
-    '<input type="text" inputmode="numeric" id="login-cpf-input" placeholder="CPF" value="' + esc(state.loginCpf) + '">' +
-    '<input type="text" inputmode="numeric" id="login-titulo-input" placeholder="Título de eleitor" value="' + esc(state.loginTitulo) + '">' +
-    '<input type="text" id="login-nascimento-input" placeholder="Data de nascimento (dd/mm/aaaa)" value="' + esc(state.loginNascimento) + '">' +
+    '<input type="email" id="login-email-input" placeholder="Seu e-mail cadastrado" value="' + esc(state.loginEmail) + '">' +
     '<label class="consent-row"><input type="checkbox" id="login-aceite-checkbox"' + (state.loginAceite ? ' checked' : '') + '>' +
-    '<span>Li e aceito que meus dados (nome, CPF, título de eleitor, data de nascimento e e-mail) sejam usados para confirmar minha identidade e liberar meu acesso a este aplicativo experimental de comunicação da 4ª Zona Eleitoral, até sua desativação e a exclusão dos meus dados pessoais (prevista para até 15 dias após o fim do pleito).</span></label>' +
-    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Verificando…' : 'Entrar') + '</button>' +
+    '<span>Li e aceito que meu e-mail seja usado para confirmar minha identidade e liberar meu acesso a este aplicativo experimental de comunicação da 4ª Zona Eleitoral, até sua desativação e a exclusão dos meus dados pessoais (prevista para até 15 dias após o fim do pleito).</span></label>' +
+    '<button class="login-btn" data-action="solicitar-codigo" ' + (state.loginSending || !state.loginAceite ? 'disabled' : '') + '>' + (state.loginSending ? 'Enviando código…' : 'Entrar') + '</button>' +
     '</div>' + statusHtml +
     '<button class="link-btn" style="margin-top:18px; color:#9B9484; font-size:12px;" data-action="encerrar-sessao-forcado">Encerrar sessão / limpar dados salvos neste aparelho</button>' +
     '</div>';
@@ -2034,8 +2041,13 @@ async function confirmarVerificacaoEmail() {
     state.verifSending = false;
     if (!resp.ok) { state.verifStatus = 'error:' + (json.error || 'Código inválido.'); render(); return; }
     state.perfil.email_verificado = true;
-    state.verifCodigo = ''; state.verifStatus = 'ok:E-mail confirmado! Já pode postar.';
+    state.verifCodigo = ''; state.verifStatus = 'ok:Código confirmado!';
     if (state.banner === 'Confirme o código de verificação (mandamos por e-mail) pra poder postar.') state.banner = '';
+    // agora sim dá pra carregar o conteúdo — antes disso a leitura tava
+    // bloqueada pela RLS (sessão ainda não verificada)
+    state.screen = 'mural';
+    render();
+    try { await Promise.all([loadMural(), loadMyGroups()]); } catch (e) {}
     render();
   } catch (e) {
     state.verifSending = false; state.verifStatus = 'error:Sem conexão. Tente de novo.'; render();
@@ -2126,8 +2138,8 @@ function renderPerfil() {
   if (!p.email_verificado) {
     var verifStatusHtml = '';
     if (state.verifStatus) { var vparts = state.verifStatus.split(':'); verifStatusHtml = '<div class="login-msg ' + vparts[0] + '" style="margin-top:8px;">' + esc(vparts.slice(1).join(':')) + '</div>'; }
-    html += '<div class="add-form" style="margin-top:16px; border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Confirme seu e-mail pra poder postar</div>' +
-      '<div class="hint" style="margin:0 2px 8px;">Você já pode ler tudo normalmente. Mandamos um código de 6 dígitos por e-mail — confirme aqui pra liberar postar mensagens, mural e confirmações.</div>' +
+    html += '<div class="add-form" style="margin-top:16px; border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Confirme o código pra continuar</div>' +
+      '<div class="hint" style="margin:0 2px 8px;">Mandamos um código de 6 dígitos pro seu e-mail — confirme aqui pra liberar o app (Mural, grupos, postar).</div>' +
       '<div style="display:flex; gap:8px; align-items:flex-start; background:#fff; border:1px solid #E4CA8B; border-radius:8px; padding:10px 12px; margin-bottom:10px;">' +
       icon('search', 15, '#8A6A1E') +
       '<div style="font-size:12.5px; color:#5A4A20; line-height:1.4;"><strong>O código pode cair na pasta de Spam ou Lixo Eletrônico</strong> — é comum logo nas primeiras semanas do app. Se não achar em alguns minutos, procure lá antes de pedir outro.</div>' +
@@ -2385,6 +2397,10 @@ function render() {
 }
 
 function go(screen) {
+  // sem sessão verificada não tem conteúdo nenhum pra ver (RLS bloqueia) —
+  // manda sempre de volta pro Perfil, onde fica o campo de confirmar código,
+  // em vez de deixar a pessoa "perdida" numa aba vazia.
+  if (screen !== 'perfil' && !state.perfil.email_verificado) screen = 'perfil';
   if (screen !== 'thread') leaveThread();
   state.screen = screen; state.banner = '';
   if (screen === 'painel') loadPainel();
@@ -2483,10 +2499,7 @@ document.addEventListener('input', function (e) {
     if (state.muralFormPassos[passoIdx]) state.muralFormPassos[passoIdx][campo] = e.target.value;
     return;
   }
-  if (id === 'login-nome-input') { state.loginNome = maskNome(e.target.value); aplicarMascara(e.target, state.loginNome); }
-  else if (id === 'login-cpf-input') { state.loginCpf = maskCPF(e.target.value); aplicarMascara(e.target, state.loginCpf); }
-  else if (id === 'login-titulo-input') { state.loginTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.loginTitulo); }
-  else if (id === 'login-nascimento-input') { state.loginNascimento = maskData(e.target.value); aplicarMascara(e.target, state.loginNascimento); }
+  if (id === 'login-email-input') state.loginEmail = e.target.value;
   else if (id === 'faq-search-input') { state.faqSearch = e.target.value; state.activeFaqCat = null; render(); }
   else if (id === 'faq-categoria-nova-input') state.faqFormCategoriaNova = e.target.value;
   else if (id === 'faq-pergunta-input') state.faqFormPergunta = e.target.value;
