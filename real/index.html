@@ -396,10 +396,9 @@ var state = {
   configGeralIntervalo: '60', configGeralIntervaloForm: '', configGeralSalvo: false,
   listaEspera: [], listaEsperaEnviando: null, onboardingTotal: 0, onboardingEntraram: 0, gruposOnboarding: {},
   perfilFormNomeExibicao: '', perfilNomeSalvo: false,
-  perfilFormChavePix: '', perfilChavePixSalvo: false,
   showAddForm: false, newEmail: '', newName: '', newFuncao: '', newCpf: '', newTitulo: '', newNascimento: '',
   newEscola: '', newSecao: '', newSubfuncao: '',
-  editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '', editSubfuncao: '', editChavePix: '', editEmailSomenteLeitura: '', editEmailCarregando: false,
+  editingConvocadoId: null, editNome: '', editFuncao: '', editEscola: '', editSecao: '', editSubfuncao: '', editEmailSomenteLeitura: '', editEmailCarregando: false,
   showImportForm: false, importEnviando: false, importResultado: null,
   loginEmail: '', loginStatus: '', loginSending: false, loginAceite: false,
   verifCodigo: '', verifStatus: '', verifSending: false,
@@ -525,14 +524,13 @@ async function onSignedIn(session) {
   if (perfilCache) {
     state.perfil = perfilCache;
     state.perfilFormNomeExibicao = perfilCache.nome_exibicao || '';
-    state.perfilFormChavePix = perfilCache.chave_pix || '';
     state.screen = 'mural';
     state.muralPosts = lsGet('muralPosts', []);
     state.myGroups = lsGet('myGroups', []);
     render();
   }
 
-  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, subfuncao, chave_pix, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
+  var { data: perfil, error } = await sb.from('perfis').select('id, nome_completo, nome_exibicao, funcao, subfuncao, is_moderador, is_revisor, ativo, criado_em, consentimento_em, email_verificado').eq('id', session.user.id).single();
   if (error || !perfil) {
     if (perfilCache) return; // já está mostrando o que tem em cache — provável só falta de rede, não desloga à toa
     console.error('onSignedIn: select em perfis falhou/veio vazio, deslogando —', error);
@@ -554,7 +552,6 @@ async function onSignedIn(session) {
   state.perfil = perfil;
   lsSet('perfil', perfil);
   state.perfilFormNomeExibicao = perfil.nome_exibicao || '';
-  state.perfilFormChavePix = perfil.chave_pix || '';
   if (!perfil.email_verificado) {
     // nada de conteúdo carrega até confirmar o código — a leitura agora
     // também exige sessão verificada (RLS), não só a escrita como antes.
@@ -1248,7 +1245,7 @@ async function salvarConfigGeralIntervalo() {
   render();
 }
 async function loadPainelMembers() {
-  var q = sb.from('memberships').select('perfil_id, grupo_id, perfis!inner(id, nome_completo, funcao, subfuncao, chave_pix, email_verificado, ativo), grupos(nome, slug, tipo, escola_id)').eq('perfis.ativo', true);
+  var q = sb.from('memberships').select('perfil_id, grupo_id, perfis!inner(id, nome_completo, funcao, subfuncao, email_verificado, ativo), grupos(nome, slug, tipo, escola_id)').eq('perfis.ativo', true);
   if (state.painelFilter !== 'todos') {
     var g = state.allGroups.find(function (x) { return x.slug === state.painelFilter; });
     if (g) q = q.eq('grupo_id', g.id);
@@ -1267,7 +1264,7 @@ function agruparPorPessoa(linhas) {
     if (!m.perfis) return;
     var id = m.perfil_id;
     if (!porPessoa[id]) {
-      porPessoa[id] = { id: id, nome_completo: m.perfis.nome_completo, funcao: m.perfis.funcao, subfuncao: m.perfis.subfuncao, chave_pix: m.perfis.chave_pix, email_verificado: m.perfis.email_verificado, gruposPrimarios: [] };
+      porPessoa[id] = { id: id, nome_completo: m.perfis.nome_completo, funcao: m.perfis.funcao, subfuncao: m.perfis.subfuncao, email_verificado: m.perfis.email_verificado, gruposPrimarios: [] };
       ordem.push(id);
     }
     var g = m.grupos;
@@ -1378,7 +1375,6 @@ async function abrirEditarConvocado(perfilId) {
   state.editFuncao = FUNCOES_TRE.indexOf(pessoa.funcao) !== -1 ? pessoa.funcao : '';
   state.editSubfuncao = pessoa.subfuncao || '';
   state.editEscola = local.escola; state.editSecao = local.secao;
-  state.editChavePix = pessoa.chave_pix || '';
   state.editEmailSomenteLeitura = ''; state.editEmailCarregando = true;
   render();
   // só pra MOSTRAR (não editável) — e-mail não vem na listagem geral de
@@ -1414,8 +1410,7 @@ async function salvarEditarConvocado() {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionData.session.access_token },
       body: JSON.stringify({
         perfil_id: perfilId, nome_completo: nome, funcao: state.editFuncao, subfuncao: state.editSubfuncao,
-        local_tipo: localTipoDaFuncao(state.editFuncao), escola: state.editEscola, secao: state.editSecao,
-        chave_pix: state.editChavePix.trim()
+        local_tipo: localTipoDaFuncao(state.editFuncao), escola: state.editEscola, secao: state.editSecao
       })
     });
     var json = await resp.json();
@@ -2086,15 +2081,6 @@ async function salvarNomeExibicao() {
   state.perfilNomeSalvo = true;
   render();
 }
-async function salvarChavePix() {
-  var valor = state.perfilFormChavePix.trim() || null;
-  var { error } = await sb.from('perfis').update({ chave_pix: valor }).eq('id', state.session.user.id);
-  if (error) { state.banner = error.message; render(); return; }
-  state.perfil.chave_pix = valor;
-  state.perfilChavePixSalvo = true;
-  render();
-}
-
 function renderInstalarAppCard() {
   if (state.appRecemInstalado) {
     return '<div class="add-form" style="margin-top:16px; border-color:#B7CDBE; background:#EAF1EC;">' +
@@ -2156,11 +2142,6 @@ function renderPerfil() {
     comMic('<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" style="padding-right:36px;" value="' + esc(state.perfilFormNomeExibicao) + '">', 'nome-exibicao-input') +
     (state.perfilNomeSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-nome-exibicao">Salvar</button></div></div>';
-  html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Chave PIX</div>' +
-    '<div class="hint" style="margin:0 2px 8px;">Opcional — facilita o Cartório fazer sua transferência (ajuda de custo, reembolso etc.).</div>' +
-    '<input type="text" id="chave-pix-input" placeholder="CPF, e-mail, telefone ou chave aleatória" value="' + esc(state.perfilFormChavePix) + '">' +
-    (state.perfilChavePixSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
-    '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-chave-pix">Salvar</button></div></div>';
   html += '<div class="hint">Sessão autenticada por link enviado ao seu e-mail cadastrado no TRE-PE. Toque no ícone no topo para sair.</div>';
   return html;
 }
@@ -2216,7 +2197,7 @@ function renderPainel() {
     var enviandoEmail = state.listaEsperaEnviando === m.id + ':email';
     var enviandoWpp = state.listaEsperaEnviando === m.id + ':whatsapp';
     html += '<div class="painel-member"><div class="avatar" style="background:' + AVATAR_COLORS[i % AVATAR_COLORS.length] + ';">' + initials(m.nome_completo) + '</div>' +
-      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.nome_completo) + '</div><div class="member-role">' + esc(m.funcao || '') + esc(m.subfuncao ? ' (' + m.subfuncao + ')' : '') + ' · ' + esc(localTexto(m)) + (m.email_verificado ? '' : ' · sem código confirmado') + (m.chave_pix ? ' · PIX: ' + esc(m.chave_pix) : '') + '</div></div>';
+      '<div style="flex:1 1 auto; min-width:0;"><div class="member-name">' + esc(m.nome_completo) + '</div><div class="member-role">' + esc(m.funcao || '') + esc(m.subfuncao ? ' (' + m.subfuncao + ')' : '') + ' · ' + esc(localTexto(m)) + (m.email_verificado ? '' : ' · sem código confirmado') + '</div></div>';
     if (!m.email_verificado) {
       html += '<button class="icon-btn" title="Enviar código por e-mail" style="margin-right:6px;" data-action="reenviar-espera-email" data-id="' + m.id + '" ' + (enviandoEmail ? 'disabled' : '') + '>' + icon('mail', 14) + '</button>' +
         '<button class="icon-btn" title="Enviar código por WhatsApp" style="margin-right:6px;" data-action="reenviar-espera-whatsapp" data-id="' + m.id + '" ' + (enviandoWpp ? 'disabled' : '') + '>' + icon('whatsapp', 14, '#3E6E4E') + '</button>';
@@ -2306,7 +2287,6 @@ function renderEditarConvocadoForm(m) {
     renderFuncaoCampo('edit', state.editFuncao) +
     renderSubfuncaoCampo('edit', state.editFuncao, state.editSubfuncao) +
     renderLocalCampos('edit', state.editFuncao, state.editEscola, state.editSecao) +
-    '<input type="text" id="edit-chave-pix-input" placeholder="Chave PIX (opcional)" value="' + esc(state.editChavePix) + '">' +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-editar-convocado">Salvar</button><button class="btn-secondary" data-action="cancelar-editar-convocado">Cancelar</button></div>' +
     '</div>';
 }
@@ -2434,7 +2414,6 @@ document.addEventListener('click', function (e) {
   }
   else if (action === 'open-painel') go('painel');
   else if (action === 'salvar-nome-exibicao') salvarNomeExibicao();
-  else if (action === 'salvar-chave-pix') salvarChavePix();
   else if (action === 'confirmar-verificacao') confirmarVerificacaoEmail();
   else if (action === 'reenviar-verificacao') pedirNovoCodigoVerificacao();
   else if (action === 'send-message') sendMessage();
@@ -2514,11 +2493,9 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-titulo-input') { state.newTitulo = maskTitulo(e.target.value); aplicarMascara(e.target, state.newTitulo); }
   else if (id === 'new-nascimento-input') { state.newNascimento = maskData(e.target.value); aplicarMascara(e.target, state.newNascimento); }
   else if (id === 'edit-nome-input') state.editNome = e.target.value;
-  else if (id === 'edit-chave-pix-input') state.editChavePix = e.target.value;
   else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
-  else if (id === 'chave-pix-input') { state.perfilFormChavePix = e.target.value; state.perfilChavePixSalvo = false; }
   else if (id === 'verif-codigo-input') state.verifCodigo = e.target.value;
   else if (id === 'informe-texto-input') state.informeFormTexto = e.target.value;
 });
