@@ -322,7 +322,9 @@ var ICONS = {
   whatsapp: '<path d="M10 3a7 7 0 00-6 10.6L3 17l3.5-1a7 7 0 103.5-13z"/><path d="M7 8.5c.3 2.5 2 4.2 4.5 4.5"/>',
   edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
   clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>',
-  upload: '<path d="M10 3v9M6.5 6.5L10 3l3.5 3.5"/><path d="M4 14v1.5A1.5 1.5 0 005.5 17h9a1.5 1.5 0 001.5-1.5V14"/>'
+  upload: '<path d="M10 3v9M6.5 6.5L10 3l3.5 3.5"/><path d="M4 14v1.5A1.5 1.5 0 005.5 17h9a1.5 1.5 0 001.5-1.5V14"/>',
+  mic: '<rect x="7.5" y="3" width="5" height="8" rx="2.5"/><path d="M5 9.5a5 5 0 0010 0M10 14.5V17M7 17h6"/>',
+  camera: '<path d="M4 7h2.2l.9-1.6h5.8L13.8 7H16a1 1 0 011 1v7a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1z"/><circle cx="10" cy="11.5" r="2.6"/>'
 };
 function icon(name, size, stroke, fill) {
   size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
@@ -407,7 +409,9 @@ var state = {
   banner: '',
   mostrarPassosInstalarIOS: false,
   appRecemInstalado: false,
-  diagnosticoTecnico: ''
+  diagnosticoTecnico: '',
+  locEleitorTitulo: '', locEleitorMae: '', locEleitorNascimento: '',
+  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: ''
 };
 
 var threadChannel = null, muralChannel = null;
@@ -1484,13 +1488,15 @@ function renderHeader() {
   if (state.screen === 'faq') { title = 'Perguntas Frequentes'; sub = 'Sem IA — respostas oficiais do Cartório'; }
   if (state.screen === 'perfil') { title = 'Perfil'; sub = 'Sua convocação'; showLogout = true; }
   if (state.screen === 'painel') { title = 'Painel de Moderação'; sub = 'Gerenciar integrantes e grupos'; showBack = true; showMark = false; }
+  if (state.screen === 'localizar') { title = 'Localizar eleitor'; sub = 'Ferramenta de apoio — não substitui o TSE'; showBack = true; showMark = false; }
   if (state.screen === 'thread' && state.activeGroupMeta) {
     title = state.activeGroupMeta.nome; sub = state.activeGroupMeta.descricao || ''; showBack = true; showMark = false;
   }
   var offlineHtml = '';
   if (!state.online) offlineHtml = '<div class="offline-banner"><span class="offline-dot"></span><span class="offline-text">Sem conexão — exibindo o que já foi carregado neste aparelho.</span></div>';
+  var acaoVoltar = state.screen === 'localizar' ? 'voltar-do-localizar' : 'back-to-grupos';
   return '<div class="header"><div class="header-row">' +
-    (showBack ? '<button class="header-btn" data-action="back-to-grupos">' + icon('back', 20) + '</button>' : '') +
+    (showBack ? '<button class="header-btn" data-action="' + acaoVoltar + '">' + icon('back', 20) + '</button>' : '') +
     (showMark ? '<div class="mark">' + markSvg() + '</div>' : '') +
     '<div style="flex:1 1 auto; min-width:0;"><div class="header-title">' + esc(title) + '</div><div class="header-sub">' + esc(sub) + '</div></div>' +
     (showLogout ? '<button class="header-btn" data-action="logout">' + icon('logout', 19) + '</button>' : '') +
@@ -1540,6 +1546,7 @@ function renderPassosBloco(post) {
 
 function renderMural() {
   var html = '<div class="eyebrow">Mural de comunicação</div>';
+  html += '<button class="cta-btn" style="margin-bottom:16px;" data-action="abrir-localizar-eleitor">' + icon('pin', 15, '#F7F5F0') + ' Localizar eleitor perdido</button>';
   if (state.reviewQueue.length) {
     html += '<div class="review-box"><div class="review-title">Fila de revisão (' + state.reviewQueue.length + ')</div>';
     state.reviewQueue.forEach(function (p) {
@@ -1644,6 +1651,110 @@ function renderMural() {
     html += '</div>';
   });
   if (!state.muralPosts.length && !state.reviewQueue.length) html += '<div class="hint">Nenhum aviso publicado ainda.</div>';
+  return html;
+}
+
+// ================= LOCALIZAR ELEITOR =================
+// Ferramenta de apoio pra fila — NÃO consulta nada sozinha (não existe API
+// pública do TSE pra isso, e a consulta oficial deles pede nome da mãe, que
+// não vem em nenhum documento). Só acelera o preenchimento manual: lê o
+// número do título por foto (OCR) e o nome da mãe por voz, e abre a página
+// oficial do TSE pra completar ali, com a pessoa do lado. Nada disso é
+// salvo em lugar nenhum — é dado de terceiro, fica só na memória da aba e
+// some ao sair da tela.
+var TSE_LOCAL_VOTACAO_URL = 'https://www.tse.jus.br/servicos-eleitorais/local-de-votacao-zonas-eleitorais';
+var TESSERACT_CDN_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+
+function abrirLocalizarEleitor() {
+  state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = '';
+  state.screen = 'localizar';
+  render();
+}
+function limparLocalizarEleitor() {
+  state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = '';
+  render();
+}
+function carregarTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = TESSERACT_CDN_URL;
+    s.onload = function () { resolve(); };
+    s.onerror = function () { reject(new Error('falha ao carregar a biblioteca de leitura')); };
+    document.head.appendChild(s);
+  });
+}
+async function lerTituloPorCamera(file) {
+  state.locOcrRodando = true; state.locOcrCandidatos = []; state.banner = ''; render();
+  try {
+    await carregarTesseract();
+    var resultado = await Tesseract.recognize(file, 'por');
+    var texto = (resultado && resultado.data && resultado.data.text) || '';
+    var brutos = texto.match(/\d[\d\s]{8,20}\d/g) || [];
+    var candidatos = [];
+    brutos.forEach(function (m) {
+      var limpo = m.replace(/\s+/g, '');
+      if (limpo.length >= 10 && limpo.length <= 13 && candidatos.indexOf(limpo) === -1) candidatos.push(limpo);
+    });
+    state.locOcrCandidatos = candidatos;
+    if (!candidatos.length) state.banner = 'Não consegui identificar um número no documento. Tente uma foto mais de perto, com boa luz, ou digite manualmente.';
+  } catch (e) {
+    state.banner = 'Não foi possível ler a foto agora. Digite o número manualmente.';
+  }
+  state.locOcrRodando = false; render();
+}
+// Web Speech API — só funciona em Chrome/Android WebView (não em
+// Firefox/Safari); se não tiver, cai pro campo de texto normal, sem quebrar.
+function iniciarReconhecimentoVoz(campoAlvo) {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { state.banner = 'Reconhecimento de voz não é suportado neste navegador — digite manualmente.'; render(); return; }
+  var rec = new SR();
+  rec.lang = 'pt-BR';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  state.locVozRodando = true; state.locVozCampoAlvo = campoAlvo; render();
+  rec.onresult = function (e) {
+    var texto = (e.results[0][0].transcript || '').trim();
+    if (campoAlvo === 'mae') state.locEleitorMae = texto;
+    render();
+  };
+  rec.onerror = function () { state.banner = 'Não consegui ouvir — tente de novo ou digite manualmente.'; render(); };
+  rec.onend = function () { state.locVozRodando = false; render(); };
+  try { rec.start(); } catch (e) { state.locVozRodando = false; render(); }
+}
+
+function renderLocalizarEleitor() {
+  var html = '<div class="add-form" style="border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Isso não responde sozinho</div>' +
+    '<div class="hint" style="margin:0 2px 0;">Só o site oficial do TSE sabe o local de votação de alguém — não existe atalho pra isso. Essa ferramenta só ajuda a preencher a consulta oficial mais rápido: lê o número do título por foto e o nome da mãe por voz, em vez de digitar tudo na mão com a fila esperando. Nada aqui fica salvo em lugar nenhum.</div>' +
+    '</div>';
+
+  html += '<div class="add-form"><div class="add-form-title">Número do título de eleitor</div>' +
+    '<input type="text" inputmode="numeric" id="loc-titulo-input" placeholder="Só números" value="' + esc(state.locEleitorTitulo) + '">' +
+    '<label class="btn-secondary" style="display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; margin-bottom:8px;">' +
+    icon('camera', 15) + (state.locOcrRodando ? ' Lendo a foto…' : ' Ler com a câmera') +
+    '<input type="file" accept="image/*" capture="environment" id="loc-ocr-file-input" style="display:none;" ' + (state.locOcrRodando ? 'disabled' : '') + '>' +
+    '</label>';
+  if (state.locOcrCandidatos.length) {
+    html += '<div class="hint" style="margin:0 2px 6px;">Números encontrados na foto — toque no certo:</div>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px;">' +
+      state.locOcrCandidatos.map(function (n) { return '<button class="filter-chip" data-action="usar-candidato-ocr" data-numero="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') +
+      '</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="add-form"><div class="add-form-title">Nome da mãe</div>' +
+    '<input type="text" id="loc-mae-input" placeholder="Nome completo da mãe" value="' + esc(state.locEleitorMae) + '">' +
+    '<button class="btn-secondary" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:8px;" data-action="falar-mae" ' + (state.locVozRodando ? 'disabled' : '') + '>' +
+    icon('mic', 14) + (state.locVozRodando && state.locVozCampoAlvo === 'mae' ? ' Ouvindo…' : ' Falar') + '</button>' +
+    '<div class="add-form-title">Data de nascimento</div>' +
+    '<input type="text" id="loc-nascimento-input" placeholder="dd/mm/aaaa" value="' + esc(state.locEleitorNascimento) + '">' +
+    '</div>';
+
+  html += '<button class="cta-btn" data-action="abrir-tse-oficial">' + icon('pin', 15, '#F7F5F0') + ' Abrir consulta oficial do TSE</button>' +
+    '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — complete lá com os dados acima, junto com a pessoa.</div>' +
+    '<button class="link-btn" style="margin-top:14px; color:#A24B3E;" data-action="limpar-localizar-eleitor">' + icon('x', 13) + ' Limpar dados</button>';
   return html;
 }
 
@@ -2315,6 +2426,7 @@ function render() {
     else if (state.screen === 'faq') body = renderFaq();
     else if (state.screen === 'perfil') body = renderPerfil();
     else if (state.screen === 'painel') body = renderPainel();
+    else if (state.screen === 'localizar') body = renderLocalizarEleitor();
     html = renderHeader() + '<div class="scroll">' + (state.banner ? '<div class="banner-error">' + esc(state.banner) + '</div>' : '') + body + '</div>';
     if (state.screen === 'thread') html += renderThreadComposer();
     html += renderBottomNav();
@@ -2353,6 +2465,13 @@ document.addEventListener('click', function (e) {
   else if (action === 'nav-faq') go('faq');
   else if (action === 'nav-perfil') go('perfil');
   else if (action === 'back-to-grupos') go('grupos');
+  else if (action === 'abrir-localizar-eleitor') abrirLocalizarEleitor();
+  else if (action === 'voltar-do-localizar') go('mural');
+  else if (action === 'limpar-localizar-eleitor') limparLocalizarEleitor();
+  else if (action === 'usar-candidato-ocr') { state.locEleitorTitulo = el.getAttribute('data-numero'); state.locOcrCandidatos = []; render(); }
+  else if (action === 'falar-titulo') iniciarReconhecimentoVoz('titulo');
+  else if (action === 'falar-mae') iniciarReconhecimentoVoz('mae');
+  else if (action === 'abrir-tse-oficial') window.open('https://www.tse.jus.br/servicos-eleitorais/local-de-votacao-zonas-eleitorais', '_blank', 'noopener');
   else if (action === 'toggle-escola') {
     var id = el.getAttribute('data-id');
     state.expandedEscolaId = state.expandedEscolaId === id ? null : id;
@@ -2448,6 +2567,9 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-nascimento-input') { state.newNascimento = maskData(e.target.value); aplicarMascara(e.target, state.newNascimento); }
   else if (id === 'edit-nome-input') state.editNome = e.target.value;
   else if (id === 'edit-chave-pix-input') state.editChavePix = e.target.value;
+  else if (id === 'loc-titulo-input') state.locEleitorTitulo = e.target.value;
+  else if (id === 'loc-mae-input') state.locEleitorMae = e.target.value;
+  else if (id === 'loc-nascimento-input') state.locEleitorNascimento = e.target.value;
   else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
@@ -2489,6 +2611,7 @@ document.addEventListener('change', function (e) {
   else if (e.target.id === 'new-secao-select') state.newSecao = e.target.value;
   else if (e.target.id === 'edit-secao-select') state.editSecao = e.target.value;
   else if (e.target.id === 'import-file-input') { if (e.target.files && e.target.files[0]) processarArquivoImport(e.target.files[0]); }
+  else if (e.target.id === 'loc-ocr-file-input') { if (e.target.files && e.target.files[0]) lerTituloPorCamera(e.target.files[0]); }
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
