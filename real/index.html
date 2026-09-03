@@ -180,6 +180,9 @@
   .login-msg.ok { color: #3E6E4E; }
   .spinner { width: 26px; height: 26px; border: 3px solid var(--border); border-top-color: var(--navy); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .pull-refresh { position: fixed; top: 0; left: 0; right: 0; max-width: 460px; margin: 0 auto; height: 0; display: flex; justify-content: center; pointer-events: none; z-index: 999; }
+  .pull-refresh-spinner { margin-top: 14px; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--navy); border-radius: 50%; opacity: 0; transform: translateY(-40px) rotate(0deg); }
+  .pull-refresh-spinner.girando { animation: spin .6s linear infinite; }
 
   .review-box { background: #FBF8F1; border: 1px solid #E9DFC4; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
   .review-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9B7A2E; text-transform: uppercase; margin-bottom: 10px; }
@@ -193,6 +196,7 @@
 </style>
 </head>
 <body>
+<div class="pull-refresh" id="pull-refresh"><div class="pull-refresh-spinner" id="pull-refresh-spinner"></div></div>
 <div class="shell" id="app"></div>
 <div id="update-banner" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:9999; background:#16294B; color:#F7F5F0; padding:12px 16px; text-align:center; font-size:13px; font-weight:600; cursor:pointer;">Nova versão disponível — toque pra atualizar</div>
 
@@ -2536,23 +2540,84 @@ document.addEventListener('change', function (e) {
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
-// Bloqueia só o "puxar pra baixo" quando já está no topo da tela (é isso que
-// o navegador interpreta como pull-to-refresh e recarrega o app, voltando
-// pro Mural mesmo se a pessoa estava navegando em outro lugar) — CSS sozinho
-// (overscroll-behavior/touch-action) não deu conta disso de forma confiável
-// no Android. Só intercepta esse gesto específico; rolar normalmente (pra
-// cima, pra baixo fora do topo) continua igual.
+// Bloqueia o "puxar pra baixo" nativo do navegador quando já está no topo
+// da tela (senão ele interpreta como pull-to-refresh e recarrega o app
+// inteiro, voltando pro Mural mesmo se a pessoa estava navegando em outro
+// lugar — CSS sozinho, tipo overscroll-behavior/touch-action, não deu
+// conta disso de forma confiável no Android) — e no lugar disso, dá o
+// pull-to-refresh NOSSO: spinner que acompanha o dedo puxando, com uma
+// resistência leve (efeito de elástico), e recarrega os dados da tela
+// atual quando solta depois de passar do ponto.
+function refreshDaTelaAtual() {
+  if (state.screen === 'mural') return loadMural();
+  if (state.screen === 'grupos') {
+    var pendentes = [loadMyGroups()];
+    if (state.perfil && state.perfil.is_moderador) pendentes.push(loadGruposOnboarding());
+    return Promise.all(pendentes);
+  }
+  if (state.screen === 'faq') return loadFaq();
+  if (state.screen === 'thread' && state.activeGroupMeta) return loadThread(state.activeGroupMeta);
+  if (state.screen === 'painel') return loadPainel();
+  return Promise.resolve();
+}
 (function () {
-  var yInicial = 0;
+  var LIMIAR = 60; // px puxados (já com resistência) pra soltar e atualizar
+  var AMORTECIMENTO = 0.5; // resistência do "elástico" — puxar 2px do dedo move só 1px na tela
+  var yInicial = 0, puxando = false, puxadoAtual = 0;
+  var elSpinner = document.getElementById('pull-refresh-spinner');
+
+  function semTransicao(el) { el.style.transition = 'none'; }
+  function comTransicao(el) { el.style.transition = 'transform .25s ease, opacity .2s ease'; }
+
   document.addEventListener('touchstart', function (e) {
-    if (e.touches.length === 1) yInicial = e.touches[0].clientY;
+    if (e.touches.length === 1) { yInicial = e.touches[0].clientY; puxando = false; }
   }, { passive: true });
+
   document.addEventListener('touchmove', function (e) {
     if (e.touches.length !== 1) return;
     var yAtual = e.touches[0].clientY;
     var rolagem = window.scrollY || document.documentElement.scrollTop || 0;
-    if (rolagem <= 0 && yAtual > yInicial) e.preventDefault();
+    if (rolagem <= 0 && yAtual > yInicial) {
+      e.preventDefault();
+      puxando = true;
+      puxadoAtual = Math.min((yAtual - yInicial) * AMORTECIMENTO, 90);
+      semTransicao(elSpinner);
+      elSpinner.style.opacity = Math.min(puxadoAtual / 40, 1);
+      elSpinner.style.transform = 'translateY(' + Math.min(puxadoAtual - 30, 55) + 'px) rotate(' + (puxadoAtual * 3) + 'deg)';
+      var app = document.getElementById('app');
+      semTransicao(app);
+      app.style.transform = 'translateY(' + Math.min(puxadoAtual * 0.5, 40) + 'px)';
+    }
   }, { passive: false });
+
+  document.addEventListener('touchend', function () {
+    if (!puxando) return;
+    puxando = false;
+    var app = document.getElementById('app');
+    comTransicao(app);
+    app.style.transform = '';
+    if (puxadoAtual >= LIMIAR) {
+      comTransicao(elSpinner);
+      elSpinner.style.opacity = '1';
+      elSpinner.style.transform = 'translateY(24px) rotate(0deg)';
+      elSpinner.classList.add('girando');
+      var comecou = Date.now();
+      refreshDaTelaAtual().catch(function () {}).then(function () {
+        var faltam = Math.max(0, 450 - (Date.now() - comecou)); // spinner some rápido demais fica estranho, segura um mínimo
+        setTimeout(function () {
+          elSpinner.classList.remove('girando');
+          comTransicao(elSpinner);
+          elSpinner.style.opacity = '0';
+          elSpinner.style.transform = 'translateY(-40px) rotate(0deg)';
+        }, faltam);
+      });
+    } else {
+      comTransicao(elSpinner);
+      elSpinner.style.opacity = '0';
+      elSpinner.style.transform = 'translateY(-40px) rotate(0deg)';
+    }
+    puxadoAtual = 0;
+  }, { passive: true });
 })();
 
 window.addEventListener('online', function () { state.online = true; render(); flushOutbox(); });
