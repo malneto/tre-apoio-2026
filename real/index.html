@@ -411,7 +411,7 @@ var state = {
   appRecemInstalado: false,
   diagnosticoTecnico: '',
   locEleitorTitulo: '', locEleitorMae: '', locEleitorNascimento: '',
-  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: ''
+  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: '', locCopiadoMsg: ''
 };
 
 var threadChannel = null, muralChannel = null;
@@ -1662,18 +1662,36 @@ function renderMural() {
 // oficial do TSE pra completar ali, com a pessoa do lado. Nada disso é
 // salvo em lugar nenhum — é dado de terceiro, fica só na memória da aba e
 // some ao sair da tela.
-var TSE_LOCAL_VOTACAO_URL = 'https://www.tse.jus.br/servicos-eleitorais/local-de-votacao-zonas-eleitorais';
+var TSE_LOCAL_VOTACAO_URL = 'https://www.tse.jus.br/servicos-eleitorais/autoatendimento-eleitoral#/atendimento-eleitor/onde-votar';
 var TESSERACT_CDN_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 
 function abrirLocalizarEleitor() {
   state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locCopiadoMsg = '';
   state.screen = 'localizar';
   render();
 }
 function limparLocalizarEleitor() {
   state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locCopiadoMsg = '';
+  render();
+}
+// Nossa aba não consegue escrever dentro da aba do TSE (domínios
+// diferentes, o navegador bloqueia isso por segurança — e a página deles
+// tem proteção anti-automação, então nem dá pra confirmar se aceitaria
+// parâmetro de URL pra pré-preencher). O jeito que garante funcionar:
+// copiar o dado pra área de transferência e a pessoa só colar lá.
+async function abrirConsultaTSE() {
+  window.open(TSE_LOCAL_VOTACAO_URL, '_blank', 'noopener');
+  var titulo = state.locEleitorTitulo.trim(), mae = state.locEleitorMae.trim();
+  var paraCopiar = titulo || mae;
+  state.locCopiadoMsg = '';
+  if (paraCopiar && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(paraCopiar);
+      state.locCopiadoMsg = (titulo ? 'Número do título' : 'Nome da mãe') + ' copiado — toque e segure o primeiro campo da página que abriu e escolha "Colar".';
+    } catch (e) { /* clipboard sem permissão — só abre a página mesmo, sem copiar */ }
+  }
   render();
 }
 function carregarTesseract() {
@@ -1752,9 +1770,13 @@ function renderLocalizarEleitor() {
     '<input type="text" id="loc-nascimento-input" placeholder="dd/mm/aaaa" value="' + esc(state.locEleitorNascimento) + '">' +
     '</div>';
 
-  html += '<button class="cta-btn" data-action="abrir-tse-oficial">' + icon('pin', 15, '#F7F5F0') + ' Abrir consulta oficial do TSE</button>' +
-    '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — complete lá com os dados acima, junto com a pessoa.</div>' +
-    '<button class="link-btn" style="margin-top:14px; color:#A24B3E;" data-action="limpar-localizar-eleitor">' + icon('x', 13) + ' Limpar dados</button>';
+  html += '<button class="cta-btn" data-action="abrir-tse-oficial">' + icon('pin', 15, '#F7F5F0') + ' Abrir consulta oficial do TSE</button>';
+  if (state.locCopiadoMsg) {
+    html += '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px; text-align:center; justify-content:center;">' + icon('check', 16, '#3E6E4E') + ' ' + esc(state.locCopiadoMsg) + '</div>';
+  } else {
+    html += '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — completa lá com os dados acima, junto com a pessoa. Se preencheu o título ou o nome da mãe, a gente já copia pra você colar.</div>';
+  }
+  html += '<button class="link-btn" style="margin-top:14px; color:#A24B3E;" data-action="limpar-localizar-eleitor">' + icon('x', 13) + ' Limpar dados</button>';
   return html;
 }
 
@@ -2471,7 +2493,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'usar-candidato-ocr') { state.locEleitorTitulo = el.getAttribute('data-numero'); state.locOcrCandidatos = []; render(); }
   else if (action === 'falar-titulo') iniciarReconhecimentoVoz('titulo');
   else if (action === 'falar-mae') iniciarReconhecimentoVoz('mae');
-  else if (action === 'abrir-tse-oficial') window.open('https://www.tse.jus.br/servicos-eleitorais/local-de-votacao-zonas-eleitorais', '_blank', 'noopener');
+  else if (action === 'abrir-tse-oficial') abrirConsultaTSE();
   else if (action === 'toggle-escola') {
     var id = el.getAttribute('data-id');
     state.expandedEscolaId = state.expandedEscolaId === id ? null : id;
