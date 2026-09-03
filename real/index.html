@@ -323,8 +323,7 @@ var ICONS = {
   edit: '<path d="M13.3 3.3a1.6 1.6 0 012.3 0l1.1 1.1a1.6 1.6 0 010 2.3L7 16.5l-4 1 1-4L13.3 3.3z"/>',
   clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/>',
   upload: '<path d="M10 3v9M6.5 6.5L10 3l3.5 3.5"/><path d="M4 14v1.5A1.5 1.5 0 005.5 17h9a1.5 1.5 0 001.5-1.5V14"/>',
-  mic: '<rect x="7.5" y="3" width="5" height="8" rx="2.5"/><path d="M5 9.5a5 5 0 0010 0M10 14.5V17M7 17h6"/>',
-  camera: '<path d="M4 7h2.2l.9-1.6h5.8L13.8 7H16a1 1 0 011 1v7a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1z"/><circle cx="10" cy="11.5" r="2.6"/>'
+  mic: '<rect x="7.5" y="3" width="5" height="8" rx="2.5"/><path d="M5 9.5a5 5 0 0010 0M10 14.5V17M7 17h6"/>'
 };
 function icon(name, size, stroke, fill) {
   size = size || 18; stroke = stroke || 'currentColor'; fill = fill || 'none';
@@ -410,8 +409,7 @@ var state = {
   mostrarPassosInstalarIOS: false,
   appRecemInstalado: false,
   diagnosticoTecnico: '',
-  locEleitorTitulo: '', locEleitorMae: '', locEleitorNascimento: '',
-  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: '', locConsultaAberta: false
+  vozGravandoCampo: ''
 };
 
 var threadChannel = null, muralChannel = null;
@@ -1488,15 +1486,13 @@ function renderHeader() {
   if (state.screen === 'faq') { title = 'Perguntas Frequentes'; sub = 'Sem IA — respostas oficiais do Cartório'; }
   if (state.screen === 'perfil') { title = 'Perfil'; sub = 'Sua convocação'; showLogout = true; }
   if (state.screen === 'painel') { title = 'Painel de Moderação'; sub = 'Gerenciar integrantes e grupos'; showBack = true; showMark = false; }
-  if (state.screen === 'localizar') { title = 'Localizar eleitor'; sub = 'Ferramenta de apoio — não substitui o TSE'; showBack = true; showMark = false; }
   if (state.screen === 'thread' && state.activeGroupMeta) {
     title = state.activeGroupMeta.nome; sub = state.activeGroupMeta.descricao || ''; showBack = true; showMark = false;
   }
   var offlineHtml = '';
   if (!state.online) offlineHtml = '<div class="offline-banner"><span class="offline-dot"></span><span class="offline-text">Sem conexão — exibindo o que já foi carregado neste aparelho.</span></div>';
-  var acaoVoltar = state.screen === 'localizar' ? 'voltar-do-localizar' : 'back-to-grupos';
   return '<div class="header"><div class="header-row">' +
-    (showBack ? '<button class="header-btn" data-action="' + acaoVoltar + '">' + icon('back', 20) + '</button>' : '') +
+    (showBack ? '<button class="header-btn" data-action="back-to-grupos">' + icon('back', 20) + '</button>' : '') +
     (showMark ? '<div class="mark">' + markSvg() + '</div>' : '') +
     '<div style="flex:1 1 auto; min-width:0;"><div class="header-title">' + esc(title) + '</div><div class="header-sub">' + esc(sub) + '</div></div>' +
     (showLogout ? '<button class="header-btn" data-action="logout">' + icon('logout', 19) + '</button>' : '') +
@@ -1546,7 +1542,6 @@ function renderPassosBloco(post) {
 
 function renderMural() {
   var html = '<div class="eyebrow">Mural de comunicação</div>';
-  html += '<button class="cta-btn" style="margin-bottom:16px;" data-action="abrir-localizar-eleitor">' + icon('pin', 15, '#F7F5F0') + ' Localizar eleitor perdido</button>';
   if (state.reviewQueue.length) {
     html += '<div class="review-box"><div class="review-title">Fila de revisão (' + state.reviewQueue.length + ')</div>';
     state.reviewQueue.forEach(function (p) {
@@ -1580,14 +1575,14 @@ function renderMural() {
       html += '<div class="add-form"><div class="add-form-title">' + (state.editingMuralId ? 'Editar aviso do Mural' : 'Novo aviso no Mural') + '</div>' +
         (state.editingMuralId ? '<div class="hint" style="margin:0 2px 8px; color:#A24B3E;">Se este aviso já estiver publicado, a edição volta ele pra fila de revisão antes de aparecer atualizado no Mural.</div>' : '') +
         '<div class="hint" style="margin:0 2px 8px;">O cabeçalho "Cartório Eleitoral · 4ª Zona" já aparece sozinho em cima de todo aviso — não precisa digitar isso. O título é a manchete do aviso, ex.: "Fechamento dos portões às 17h".</div>' +
-        '<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório) — ex.: Fechamento dos portões às 17h" value="' + esc(state.muralFormTitulo) + '">' +
-        '<textarea id="mural-texto-input" placeholder="Texto do aviso (opcional)" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.muralFormTexto) + '</textarea>';
+        comMic('<input type="text" id="mural-titulo-input" placeholder="Título (obrigatório) — ex.: Fechamento dos portões às 17h" style="padding-right:36px;" value="' + esc(state.muralFormTitulo) + '">', 'mural-titulo-input') +
+        comMic('<textarea id="mural-texto-input" placeholder="Texto do aviso (opcional)" rows="3" style="width:100%; padding:9px 34px 9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.muralFormTexto) + '</textarea>', 'mural-texto-input');
       html += '<div class="toggle-row" style="margin-bottom:' + (state.muralFormComTopicos ? '12px' : '4px') + ';"><div>' +
         '<div class="toggle-title" style="font-size:12.5px;">Seção de tópicos</div>' +
         '<div class="toggle-desc">Opcional — ex.: cronograma com data + descrição, aparece com "ver mais"</div></div>' +
         '<button class="switch" style="background:' + (state.muralFormComTopicos ? '#16294B' : '#D8D2C4') + ';" data-action="toggle-topicos"><div class="switch-knob" style="left:' + (state.muralFormComTopicos ? '21px' : '3px') + ';"></div></button></div>';
       if (state.muralFormComTopicos) {
-        html += '<input type="text" id="mural-topicos-titulo-input" placeholder="Título da seção (ex.: Cronograma completo)" value="' + esc(state.muralFormTopicosTitulo) + '" style="margin-bottom:8px;">';
+        html += comMic('<input type="text" id="mural-topicos-titulo-input" placeholder="Título da seção (ex.: Cronograma completo)" value="' + esc(state.muralFormTopicosTitulo) + '" style="margin-bottom:8px; padding-right:36px;">', 'mural-topicos-titulo-input');
         state.muralFormPassos.forEach(function (p, idx) {
           html += '<div style="display:flex; gap:6px; margin-bottom:8px;">' +
             '<input type="text" data-passo-campo="data" data-passo-idx="' + idx + '" placeholder="Data/rótulo" style="width:100px; padding:9px 10px; border:1px solid var(--border); border-radius:7px; font-size:13px;" value="' + esc(p.data) + '">' +
@@ -1654,145 +1649,53 @@ function renderMural() {
   return html;
 }
 
-// ================= LOCALIZAR ELEITOR =================
-// Ferramenta de apoio pra fila — NÃO consulta nada sozinha (não existe API
-// pública do TSE pra isso, e a consulta oficial deles pede nome da mãe, que
-// não vem em nenhum documento). Só acelera o preenchimento manual: lê o
-// número do título por foto (OCR) e o nome da mãe por voz, e abre a página
-// oficial do TSE pra completar ali, com a pessoa do lado. Nada disso é
-// salvo em lugar nenhum — é dado de terceiro, fica só na memória da aba e
-// some ao sair da tela.
-var TSE_LOCAL_VOTACAO_URL = 'https://www.tse.jus.br/servicos-eleitorais/autoatendimento-eleitoral#/atendimento-eleitor/onde-votar';
-var TESSERACT_CDN_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-
-function abrirLocalizarEleitor() {
-  state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locConsultaAberta = false;
-  state.screen = 'localizar';
-  render();
-}
-function limparLocalizarEleitor() {
-  state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locConsultaAberta = false;
-  render();
-}
-// Nossa aba não consegue escrever dentro da aba do TSE (domínios
-// diferentes, o navegador bloqueia isso por segurança — e a página deles
-// tem proteção anti-automação, então nem dá pra confirmar se aceitaria
-// parâmetro de URL pra pré-preencher). O jeito que garante funcionar:
-// copiar o dado pra área de transferência e a pessoa só colar lá.
-async function abrirConsultaTSE() {
-  window.open(TSE_LOCAL_VOTACAO_URL, '_blank', 'noopener');
-  state.locConsultaAberta = true;
-  // colar (toque e segure > Colar) exige um gesto que ninguém descobre
-  // sozinho numa fila com pressa — testado ao vivo, a pessoa via o campo
-  // vazio e desistia ali. Copiar continua rolando por baixo dos panos, de
-  // bônus, mas o que garante funcionar é mostrar o dado bem grande aqui
-  // embaixo pra digitar direto na página que abriu.
-  var titulo = state.locEleitorTitulo.trim();
-  if (titulo && navigator.clipboard && navigator.clipboard.writeText) {
-    try { await navigator.clipboard.writeText(titulo); } catch (e) { /* sem permissão de clipboard — sem problema, digitar funciona igual */ }
-  }
-  render();
-}
-function carregarTesseract() {
-  if (window.Tesseract) return Promise.resolve();
-  return new Promise(function (resolve, reject) {
-    var s = document.createElement('script');
-    s.src = TESSERACT_CDN_URL;
-    s.onload = function () { resolve(); };
-    s.onerror = function () { reject(new Error('falha ao carregar a biblioteca de leitura')); };
-    document.head.appendChild(s);
-  });
-}
-async function lerTituloPorCamera(file) {
-  state.locOcrRodando = true; state.locOcrCandidatos = []; state.banner = ''; render();
-  try {
-    await carregarTesseract();
-    var resultado = await Tesseract.recognize(file, 'por');
-    var texto = (resultado && resultado.data && resultado.data.text) || '';
-    var brutos = texto.match(/\d[\d\s]{8,20}\d/g) || [];
-    var candidatos = [];
-    brutos.forEach(function (m) {
-      var limpo = m.replace(/\s+/g, '');
-      if (limpo.length >= 10 && limpo.length <= 13 && candidatos.indexOf(limpo) === -1) candidatos.push(limpo);
-    });
-    state.locOcrCandidatos = candidatos;
-    if (!candidatos.length) state.banner = 'Não consegui identificar um número no documento. Tente uma foto mais de perto, com boa luz, ou digite manualmente.';
-  } catch (e) {
-    state.banner = 'Não foi possível ler a foto agora. Digite o número manualmente.';
-  }
-  state.locOcrRodando = false; render();
-}
-// Web Speech API — só funciona em Chrome/Android WebView (não em
-// Firefox/Safari); se não tiver, cai pro campo de texto normal, sem quebrar.
-function iniciarReconhecimentoVoz(campoAlvo) {
+// ================= VOZ PRA TEXTO (geral) =================
+// Web Speech API — nativo do navegador, só funciona em Chrome/Android
+// WebView (não em Firefox/Safari); se não tiver, cai pro campo de texto
+// normal, sem quebrar. Aplica no campo pelo ID e dispara um evento 'input'
+// de verdade — o valor entra pelo MESMO caminho de quando a pessoa digita
+// (mesmo listener, mesma atualização de state), então depois de
+// transcrever é exatamente como se tivesse sido escrito à mão.
+function iniciarReconhecimentoVoz(inputId) {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { state.banner = 'Reconhecimento de voz não é suportado neste navegador — digite manualmente.'; render(); return; }
+  var campo = document.getElementById(inputId);
+  if (!campo) return;
   var rec = new SR();
   rec.lang = 'pt-BR';
   rec.interimResults = false;
   rec.maxAlternatives = 1;
-  state.locVozRodando = true; state.locVozCampoAlvo = campoAlvo; render();
+  state.vozGravandoCampo = inputId; render();
   rec.onresult = function (e) {
     var texto = (e.results[0][0].transcript || '').trim();
-    if (campoAlvo === 'mae') state.locEleitorMae = texto;
-    render();
+    if (!texto) return;
+    var elemento = document.getElementById(inputId);
+    if (!elemento) return;
+    elemento.value = elemento.value ? (elemento.value + ' ' + texto) : texto;
+    elemento.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  rec.onerror = function () { state.banner = 'Não consegui ouvir — tente de novo ou digite manualmente.'; render(); };
-  rec.onend = function () { state.locVozRodando = false; render(); };
-  try { rec.start(); } catch (e) { state.locVozRodando = false; render(); }
+  rec.onerror = function () { state.banner = 'Não consegui ouvir — tente de novo ou digite manualmente.'; };
+  rec.onend = function () { state.vozGravandoCampo = ''; render(); };
+  try { rec.start(); } catch (e) { state.vozGravandoCampo = ''; render(); }
 }
-
-function renderLocalizarEleitor() {
-  var html = '<div class="add-form" style="border-color:#E4CA8B; background:#FBF5E8;"><div class="add-form-title">Isso não responde sozinho</div>' +
-    '<div class="hint" style="margin:0 2px 0;">Só o site oficial do TSE sabe o local de votação de alguém — não existe atalho pra isso. Essa ferramenta só ajuda a preencher a consulta oficial mais rápido: lê o número do título por foto e o nome da mãe por voz, em vez de digitar tudo na mão com a fila esperando. Nada aqui fica salvo em lugar nenhum.</div>' +
-    '</div>';
-
-  html += '<div class="add-form"><div class="add-form-title">Número do título de eleitor</div>' +
-    '<input type="text" inputmode="numeric" id="loc-titulo-input" placeholder="Só números" value="' + esc(state.locEleitorTitulo) + '">' +
-    '<label class="btn-secondary" style="display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; margin-bottom:8px;">' +
-    icon('camera', 15) + (state.locOcrRodando ? ' Lendo a foto…' : ' Ler com a câmera') +
-    '<input type="file" accept="image/*" capture="environment" id="loc-ocr-file-input" style="display:none;" ' + (state.locOcrRodando ? 'disabled' : '') + '>' +
-    '</label>';
-  if (state.locOcrCandidatos.length) {
-    html += '<div class="hint" style="margin:0 2px 6px;">Números encontrados na foto — toque no certo:</div>' +
-      '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:4px;">' +
-      state.locOcrCandidatos.map(function (n) { return '<button class="filter-chip" data-action="usar-candidato-ocr" data-numero="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') +
-      '</div>';
-  }
-  html += '</div>';
-
-  html += '<div class="add-form"><div class="add-form-title">Nome da mãe</div>' +
-    '<input type="text" id="loc-mae-input" placeholder="Nome completo da mãe" value="' + esc(state.locEleitorMae) + '">' +
-    '<button class="btn-secondary" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:8px;" data-action="falar-mae" ' + (state.locVozRodando ? 'disabled' : '') + '>' +
-    icon('mic', 14) + (state.locVozRodando && state.locVozCampoAlvo === 'mae' ? ' Ouvindo…' : ' Falar') + '</button>' +
-    '<div class="add-form-title">Data de nascimento</div>' +
-    '<input type="text" id="loc-nascimento-input" placeholder="dd/mm/aaaa" value="' + esc(state.locEleitorNascimento) + '">' +
-    '</div>';
-
-  html += '<button class="cta-btn" data-action="abrir-tse-oficial">' + icon('pin', 15, '#F7F5F0') + ' Abrir consulta oficial do TSE</button>';
-  var temAlgumDado = state.locEleitorTitulo.trim() || state.locEleitorMae.trim() || state.locEleitorNascimento.trim();
-  if (state.locConsultaAberta && temAlgumDado) {
-    html += '<div class="add-form" style="margin-top:10px; border-color:#B7CDBE; background:#EAF1EC;"><div class="add-form-title">Digite isso na página que abriu</div>';
-    if (state.locEleitorTitulo.trim()) {
-      html += '<div class="hint" style="margin:0 2px 2px;">Número do título</div>' +
-        '<div style="font-size:24px; font-weight:700; letter-spacing:1px; color:#16294B; font-family:monospace; margin-bottom:10px; word-break:break-all;">' + esc(state.locEleitorTitulo) + '</div>';
-    }
-    if (state.locEleitorMae.trim()) {
-      html += '<div class="hint" style="margin:0 2px 2px;">Nome da mãe</div>' +
-        '<div style="font-size:17px; font-weight:700; color:#16294B; margin-bottom:10px;">' + esc(state.locEleitorMae) + '</div>';
-    }
-    if (state.locEleitorNascimento.trim()) {
-      html += '<div class="hint" style="margin:0 2px 2px;">Data de nascimento</div>' +
-        '<div style="font-size:17px; font-weight:700; color:#16294B;">' + esc(state.locEleitorNascimento) + '</div>';
-    }
-    html += '<div class="hint" style="margin-top:10px;">Se tocar e segurar o campo lá abrir "Colar", o número do título já está copiado — mas digitar direto também resolve.</div></div>';
-  } else {
-    html += '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — os dados ficam grandes aqui embaixo pra você digitar lá, junto com a pessoa.</div>';
-  }
-  html += '<button class="link-btn" style="margin-top:14px; color:#A24B3E;" data-action="limpar-localizar-eleitor">' + icon('x', 13) + ' Limpar dados</button>';
-  return html;
+// Botão de microfone reutilizável — coloca ao lado/embaixo de um campo de
+// texto pra dar a opção de ditar em vez de digitar.
+function botaoFalar(inputId, opts) {
+  opts = opts || {};
+  var gravando = state.vozGravandoCampo === inputId;
+  var estiloBase = opts.bloco
+    ? 'width:100%; display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:8px;'
+    : opts.inline
+      ? 'flex:0 0 auto; padding:4px;'
+      : 'position:absolute; right:5px; top:5px; padding:5px;';
+  return '<button type="button" class="' + (opts.bloco ? 'btn-secondary' : 'icon-btn') + '" style="' + estiloBase + '" data-action="falar-campo" data-campo="' + inputId + '" title="Falar" ' + (state.vozGravandoCampo && !gravando ? 'disabled' : '') + '>' +
+    icon('mic', 14, gravando ? '#C79A3D' : undefined) + (opts.bloco ? (gravando ? ' Ouvindo…' : ' Falar') : '') + '</button>';
+}
+// Envolve o HTML de um <input>/<textarea> num container relativo com o
+// microfone flutuando no canto — pra não precisar reorganizar o layout ao
+// redor de cada campo.
+function comMic(inputHtml, inputId) {
+  return '<div style="position:relative;">' + inputHtml + botaoFalar(inputId) + '</div>';
 }
 
 function pctBadgeHtml(pct) {
@@ -1972,7 +1875,7 @@ function renderInformeBox() {
   if (state.showInformeForm) {
     html += '<div class="add-form" style="margin-bottom:10px;"><div class="add-form-title">Postar informe do Cartório neste grupo</div>' +
       '<div class="hint" style="margin:0 2px 8px;">Aparece destacado pra todo mundo do grupo, mesmo você não sendo integrante.</div>' +
-      '<textarea id="informe-texto-input" placeholder="Texto do informe" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.informeFormTexto) + '</textarea>' +
+      comMic('<textarea id="informe-texto-input" placeholder="Texto do informe" rows="3" style="width:100%; padding:9px 34px 9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.informeFormTexto) + '</textarea>', 'informe-texto-input') +
       '<div class="toggle-row" style="margin-bottom:12px;"><div>' +
       '<div class="toggle-title" style="font-size:12.5px;">Exigir confirmação de leitura</div>' +
       '<div class="toggle-desc">Integrantes do grupo veem um botão "Confirmar leitura" até confirmarem</div></div>' +
@@ -1993,7 +1896,9 @@ function renderThreadComposer() {
     // quando a rede voltar (ver enfileirarMensagem/flushOutbox)
     var emCooldown = state.composeCooldownRestante > 0;
     if (!state.online) html += '<div class="hint" style="margin:0 0 8px;">Sem conexão — sua mensagem fica na fila e envia sozinha quando voltar.</div>';
+    var gravandoCompose = state.vozGravandoCampo === 'compose-input';
     html += '<div class="composer-row"><input type="text" id="compose-input" placeholder="Escrever mensagem…" value="' + esc(state.composeText) + '"' + (emCooldown ? ' disabled' : '') + '>' +
+      '<button class="send-btn" style="background:' + (gravandoCompose ? '#C79A3D' : '#EFEAE0') + ';" data-action="falar-campo" data-campo="compose-input" title="Falar" ' + (emCooldown || (state.vozGravandoCampo && !gravandoCompose) ? 'disabled' : '') + '>' + icon('mic', 16, gravandoCompose ? '#F7F5F0' : '#6B6656') + '</button>' +
       '<button class="send-btn" data-action="send-message"' + (emCooldown ? ' disabled' : '') + '>' + icon('send', 16, '#F7F5F0') + '</button></div>';
     if (emCooldown) {
       html += '<div class="banner-error" style="margin-top:8px; margin-bottom:0; display:flex; align-items:center; gap:6px;">' + icon('clock', 15) + ' Espere ' + state.composeCooldownRestante + 's para poder enviar de novo…</div>';
@@ -2017,9 +1922,9 @@ function renderFaqForm() {
   html += '<select id="faq-categoria-select" style="margin-bottom:8px;"><option value="">Escolha uma categoria…</option>';
   cats.forEach(function (c) { html += '<option value="' + esc(c.slug) + '"' + (state.faqFormCategoria === c.slug ? ' selected' : '') + '>' + esc(c.nome) + '</option>'; });
   html += '</select>';
-  html += '<input type="text" id="faq-categoria-nova-input" placeholder="…ou digite o nome de uma categoria nova" value="' + esc(state.faqFormCategoriaNova) + '">';
-  html += '<input type="text" id="faq-pergunta-input" placeholder="Pergunta" value="' + esc(state.faqFormPergunta) + '">';
-  html += '<textarea id="faq-resposta-input" placeholder="Resposta" rows="3" style="width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.faqFormResposta) + '</textarea>';
+  html += comMic('<input type="text" id="faq-categoria-nova-input" placeholder="…ou digite o nome de uma categoria nova" style="padding-right:36px;" value="' + esc(state.faqFormCategoriaNova) + '">', 'faq-categoria-nova-input');
+  html += comMic('<input type="text" id="faq-pergunta-input" placeholder="Pergunta" style="padding-right:36px;" value="' + esc(state.faqFormPergunta) + '">', 'faq-pergunta-input');
+  html += comMic('<textarea id="faq-resposta-input" placeholder="Resposta" rows="3" style="width:100%; padding:9px 34px 9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; margin-bottom:8px; font-family:inherit; resize:vertical;">' + esc(state.faqFormResposta) + '</textarea>', 'faq-resposta-input');
   html += '<div class="hint" style="margin:0 2px 8px;">Quem pode ver esta pergunta:</div><div class="filter-row" style="margin-bottom:12px;">';
   [['todos', 'Todos'], ['administradores', 'Administradores'], ['operadores', 'Operadores'], ['mesarios', 'Mesários']].forEach(function (opt) {
     html += '<button class="filter-chip' + (state.faqFormAudiencia === opt[0] ? ' active' : '') + '" data-action="faq-audiencia" data-aud="' + opt[0] + '">' + opt[1] + '</button>';
@@ -2031,7 +1936,7 @@ function renderFaqForm() {
 
 function renderFaq() {
   var html = renderFaqForm();
-  html += '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '"></div>';
+  html += '<div class="search-box">' + icon('search', 16, '#8A8271') + '<input type="text" id="faq-search-input" placeholder="Buscar no FAQ (ex: urna, PIX, zerésima)" value="' + esc(state.faqSearch) + '">' + botaoFalar('faq-search-input', { inline: true }) + '</div>';
   var cats = categoriasFaq();
   if (state.faqSearch.trim().length > 0) {
     var q = state.faqSearch.trim().toLowerCase(); var results = [];
@@ -2236,7 +2141,7 @@ function renderPerfil() {
   }
   html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Nome de exibição</div>' +
     '<div class="hint" style="margin:0 2px 8px;">É o nome que aparece do lado das suas mensagens nos grupos. Se deixar em branco, usamos só seu primeiro nome (' + esc(primeiroNome(p.nome_completo)) + ').</div>' +
-    '<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" value="' + esc(state.perfilFormNomeExibicao) + '">' +
+    comMic('<input type="text" id="nome-exibicao-input" placeholder="' + esc(primeiroNome(p.nome_completo)) + '" style="padding-right:36px;" value="' + esc(state.perfilFormNomeExibicao) + '">', 'nome-exibicao-input') +
     (state.perfilNomeSalvo ? '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13.5px; margin-top:8px;">' + icon('check', 20, '#3E6E4E') + ' Salvo</div>' : '') +
     '<div class="add-form-actions"><button class="btn-primary" data-action="salvar-nome-exibicao">Salvar</button></div></div>';
   html += '<div class="add-form" style="margin-top:16px;"><div class="add-form-title">Chave PIX</div>' +
@@ -2291,7 +2196,7 @@ function renderPainel() {
   var membrosFiltrados = buscaNorm
     ? state.painelMembers.filter(function (m) { return semAcentoDisplay(m.nome_completo || '').toLowerCase().indexOf(buscaNorm) !== -1; })
     : state.painelMembers;
-  html += '<div class="search-box" style="margin-bottom:10px;">' + icon('search', 16, '#8A8271') + '<input type="text" id="painel-busca-input" placeholder="Buscar integrante pelo nome…" value="' + esc(state.painelBusca) + '"></div>';
+  html += '<div class="search-box" style="margin-bottom:10px;">' + icon('search', 16, '#8A8271') + '<input type="text" id="painel-busca-input" placeholder="Buscar integrante pelo nome…" value="' + esc(state.painelBusca) + '">' + botaoFalar('painel-busca-input', { inline: true }) + '</div>';
   html += '<div class="eyebrow">Integrantes (' + membrosFiltrados.length + (buscaNorm ? ' de ' + state.painelMembers.length : '') + ')</div>';
   if (buscaNorm && !membrosFiltrados.length) html += '<div class="hint">Ninguém encontrado com esse nome.</div>';
   membrosFiltrados.forEach(function (m, i) {
@@ -2310,7 +2215,7 @@ function renderPainel() {
   if (state.showAddForm) {
     html += '<div class="add-form"><div class="add-form-title">Novo integrante</div>' +
       '<input type="email" id="new-email-input" placeholder="E-mail já cadastrado no TRE" value="' + esc(state.newEmail) + '">' +
-      '<input type="text" id="new-name-input" placeholder="Nome completo" value="' + esc(state.newName) + '">' +
+      comMic('<input type="text" id="new-name-input" placeholder="Nome completo" style="padding-right:36px;" value="' + esc(state.newName) + '">', 'new-name-input') +
       renderFuncaoCampo('new', state.newFuncao) +
       renderSubfuncaoCampo('new', state.newFuncao, state.newSubfuncao) +
       '<input type="text" inputmode="numeric" id="new-cpf-input" placeholder="CPF" value="' + esc(state.newCpf) + '">' +
@@ -2384,7 +2289,7 @@ function renderEditarConvocadoForm(m) {
     '</div>' +
     '<div class="hint" style="margin:0 2px 8px;">E-mail só pra conferência — não dá pra mudar por aqui (nem CPF/título). Pra corrigir, peça diretamente ao desenvolvedor.</div>';
   return '<div class="add-form"><div class="add-form-title">Editar ' + esc(m.nome_completo) + '</div>' +
-    '<input type="text" id="edit-nome-input" placeholder="Nome completo" value="' + esc(state.editNome) + '">' +
+    comMic('<input type="text" id="edit-nome-input" placeholder="Nome completo" style="padding-right:36px;" value="' + esc(state.editNome) + '">', 'edit-nome-input') +
     emailHtml +
     renderFuncaoCampo('edit', state.editFuncao) +
     renderSubfuncaoCampo('edit', state.editFuncao, state.editSubfuncao) +
@@ -2463,7 +2368,6 @@ function render() {
     else if (state.screen === 'faq') body = renderFaq();
     else if (state.screen === 'perfil') body = renderPerfil();
     else if (state.screen === 'painel') body = renderPainel();
-    else if (state.screen === 'localizar') body = renderLocalizarEleitor();
     html = renderHeader() + '<div class="scroll">' + (state.banner ? '<div class="banner-error">' + esc(state.banner) + '</div>' : '') + body + '</div>';
     if (state.screen === 'thread') html += renderThreadComposer();
     html += renderBottomNav();
@@ -2502,13 +2406,7 @@ document.addEventListener('click', function (e) {
   else if (action === 'nav-faq') go('faq');
   else if (action === 'nav-perfil') go('perfil');
   else if (action === 'back-to-grupos') go('grupos');
-  else if (action === 'abrir-localizar-eleitor') abrirLocalizarEleitor();
-  else if (action === 'voltar-do-localizar') go('mural');
-  else if (action === 'limpar-localizar-eleitor') limparLocalizarEleitor();
-  else if (action === 'usar-candidato-ocr') { state.locEleitorTitulo = el.getAttribute('data-numero'); state.locOcrCandidatos = []; render(); }
-  else if (action === 'falar-titulo') iniciarReconhecimentoVoz('titulo');
-  else if (action === 'falar-mae') iniciarReconhecimentoVoz('mae');
-  else if (action === 'abrir-tse-oficial') abrirConsultaTSE();
+  else if (action === 'falar-campo') iniciarReconhecimentoVoz(el.getAttribute('data-campo'));
   else if (action === 'toggle-escola') {
     var id = el.getAttribute('data-id');
     state.expandedEscolaId = state.expandedEscolaId === id ? null : id;
@@ -2604,9 +2502,6 @@ document.addEventListener('input', function (e) {
   else if (id === 'new-nascimento-input') { state.newNascimento = maskData(e.target.value); aplicarMascara(e.target, state.newNascimento); }
   else if (id === 'edit-nome-input') state.editNome = e.target.value;
   else if (id === 'edit-chave-pix-input') state.editChavePix = e.target.value;
-  else if (id === 'loc-titulo-input') state.locEleitorTitulo = e.target.value;
-  else if (id === 'loc-mae-input') state.locEleitorMae = e.target.value;
-  else if (id === 'loc-nascimento-input') state.locEleitorNascimento = e.target.value;
   else if (id === 'painel-busca-input') { state.painelBusca = e.target.value; render(); }
   else if (id === 'config-geral-intervalo-input') { state.configGeralIntervaloForm = e.target.value; state.configGeralSalvo = false; }
   else if (id === 'nome-exibicao-input') { state.perfilFormNomeExibicao = e.target.value; state.perfilNomeSalvo = false; }
@@ -2648,7 +2543,6 @@ document.addEventListener('change', function (e) {
   else if (e.target.id === 'new-secao-select') state.newSecao = e.target.value;
   else if (e.target.id === 'edit-secao-select') state.editSecao = e.target.value;
   else if (e.target.id === 'import-file-input') { if (e.target.files && e.target.files[0]) processarArquivoImport(e.target.files[0]); }
-  else if (e.target.id === 'loc-ocr-file-input') { if (e.target.files && e.target.files[0]) lerTituloPorCamera(e.target.files[0]); }
   else if (e.target.id === 'login-aceite-checkbox') { state.loginAceite = e.target.checked; render(); }
   else if (e.target.id === 'faq-categoria-select') state.faqFormCategoria = e.target.value;
 });
