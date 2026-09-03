@@ -411,7 +411,7 @@ var state = {
   appRecemInstalado: false,
   diagnosticoTecnico: '',
   locEleitorTitulo: '', locEleitorMae: '', locEleitorNascimento: '',
-  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: '', locCopiadoMsg: ''
+  locOcrRodando: false, locOcrCandidatos: [], locVozRodando: false, locVozCampoAlvo: '', locConsultaAberta: false
 };
 
 var threadChannel = null, muralChannel = null;
@@ -1667,13 +1667,13 @@ var TESSERACT_CDN_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/te
 
 function abrirLocalizarEleitor() {
   state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locCopiadoMsg = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locConsultaAberta = false;
   state.screen = 'localizar';
   render();
 }
 function limparLocalizarEleitor() {
   state.locEleitorTitulo = ''; state.locEleitorMae = ''; state.locEleitorNascimento = '';
-  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locCopiadoMsg = '';
+  state.locOcrCandidatos = []; state.locOcrRodando = false; state.locVozRodando = false; state.locVozCampoAlvo = ''; state.locConsultaAberta = false;
   render();
 }
 // Nossa aba não consegue escrever dentro da aba do TSE (domínios
@@ -1683,14 +1683,15 @@ function limparLocalizarEleitor() {
 // copiar o dado pra área de transferência e a pessoa só colar lá.
 async function abrirConsultaTSE() {
   window.open(TSE_LOCAL_VOTACAO_URL, '_blank', 'noopener');
-  var titulo = state.locEleitorTitulo.trim(), mae = state.locEleitorMae.trim();
-  var paraCopiar = titulo || mae;
-  state.locCopiadoMsg = '';
-  if (paraCopiar && navigator.clipboard && navigator.clipboard.writeText) {
-    try {
-      await navigator.clipboard.writeText(paraCopiar);
-      state.locCopiadoMsg = (titulo ? 'Número do título' : 'Nome da mãe') + ' copiado — toque e segure o primeiro campo da página que abriu e escolha "Colar".';
-    } catch (e) { /* clipboard sem permissão — só abre a página mesmo, sem copiar */ }
+  state.locConsultaAberta = true;
+  // colar (toque e segure > Colar) exige um gesto que ninguém descobre
+  // sozinho numa fila com pressa — testado ao vivo, a pessoa via o campo
+  // vazio e desistia ali. Copiar continua rolando por baixo dos panos, de
+  // bônus, mas o que garante funcionar é mostrar o dado bem grande aqui
+  // embaixo pra digitar direto na página que abriu.
+  var titulo = state.locEleitorTitulo.trim();
+  if (titulo && navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(titulo); } catch (e) { /* sem permissão de clipboard — sem problema, digitar funciona igual */ }
   }
   render();
 }
@@ -1771,10 +1772,24 @@ function renderLocalizarEleitor() {
     '</div>';
 
   html += '<button class="cta-btn" data-action="abrir-tse-oficial">' + icon('pin', 15, '#F7F5F0') + ' Abrir consulta oficial do TSE</button>';
-  if (state.locCopiadoMsg) {
-    html += '<div style="display:flex; align-items:center; gap:6px; color:#3E6E4E; font-weight:700; font-size:13px; margin-top:8px; text-align:center; justify-content:center;">' + icon('check', 16, '#3E6E4E') + ' ' + esc(state.locCopiadoMsg) + '</div>';
+  var temAlgumDado = state.locEleitorTitulo.trim() || state.locEleitorMae.trim() || state.locEleitorNascimento.trim();
+  if (state.locConsultaAberta && temAlgumDado) {
+    html += '<div class="add-form" style="margin-top:10px; border-color:#B7CDBE; background:#EAF1EC;"><div class="add-form-title">Digite isso na página que abriu</div>';
+    if (state.locEleitorTitulo.trim()) {
+      html += '<div class="hint" style="margin:0 2px 2px;">Número do título</div>' +
+        '<div style="font-size:24px; font-weight:700; letter-spacing:1px; color:#16294B; font-family:monospace; margin-bottom:10px; word-break:break-all;">' + esc(state.locEleitorTitulo) + '</div>';
+    }
+    if (state.locEleitorMae.trim()) {
+      html += '<div class="hint" style="margin:0 2px 2px;">Nome da mãe</div>' +
+        '<div style="font-size:17px; font-weight:700; color:#16294B; margin-bottom:10px;">' + esc(state.locEleitorMae) + '</div>';
+    }
+    if (state.locEleitorNascimento.trim()) {
+      html += '<div class="hint" style="margin:0 2px 2px;">Data de nascimento</div>' +
+        '<div style="font-size:17px; font-weight:700; color:#16294B;">' + esc(state.locEleitorNascimento) + '</div>';
+    }
+    html += '<div class="hint" style="margin-top:10px;">Se tocar e segurar o campo lá abrir "Colar", o número do título já está copiado — mas digitar direto também resolve.</div></div>';
   } else {
-    html += '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — completa lá com os dados acima, junto com a pessoa. Se preencheu o título ou o nome da mãe, a gente já copia pra você colar.</div>';
+    html += '<div class="hint" style="margin-top:8px; text-align:center;">Abre em outra aba — os dados ficam grandes aqui embaixo pra você digitar lá, junto com a pessoa.</div>';
   }
   html += '<button class="link-btn" style="margin-top:14px; color:#A24B3E;" data-action="limpar-localizar-eleitor">' + icon('x', 13) + ' Limpar dados</button>';
   return html;
